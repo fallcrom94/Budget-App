@@ -1,7 +1,7 @@
 const DB_FILENAME = "budget.sqlite3";
 const SUPABASE_URL = "https://uhzgrdivbkhqfxgwdzsd.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_KPhJfS-UNgyV5C3v-RVO_A_e0SP96Iy";
-const SUPABASE_BUCKET = "budget-files";
+const SUPABASE_BUCKET = "Test";
 
 const state = {
   SQL: null,

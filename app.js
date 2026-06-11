@@ -1,13 +1,14 @@
-const STORAGE_KEY = "christendomBudgetingWebSettings";
-const DEMO_DB_KEY = "christendomBudgetingDemoDatabase";
 const DB_FILENAME = "budget.sqlite3";
+const SUPABASE_URL = "https://uhzgrdivbkhqfxgwdzsd.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_KPhJfS-UNgyV5C3v-RVO_A_e0SP96Iy";
+const SUPABASE_BUCKET = "budget-files";
 
 const state = {
   SQL: null,
   db: null,
-  dbSha: null,
-  settings: null,
-  mode: "github",
+  supabase: null,
+  session: null,
+  user: null,
   month: currentMonth(),
   editingTransactionId: null,
   editingAccountId: null,
@@ -33,12 +34,12 @@ const DEFAULT_CATEGORIES = [
 const els = {
   status: document.getElementById("status"),
   setupView: document.getElementById("setupView"),
-  settingsForm: document.getElementById("settingsForm"),
-  repoInput: document.getElementById("repoInput"),
-  branchInput: document.getElementById("branchInput"),
-  tokenInput: document.getElementById("tokenInput"),
-  loadReposButton: document.getElementById("loadReposButton"),
-  demoButton: document.getElementById("demoButton"),
+  authForm: document.getElementById("authForm"),
+  emailInput: document.getElementById("emailInput"),
+  passwordInput: document.getElementById("passwordInput"),
+  signUpButton: document.getElementById("signUpButton"),
+  sessionPanel: document.getElementById("sessionPanel"),
+  sessionSummary: document.getElementById("sessionSummary"),
   tabs: document.getElementById("tabs"),
   syncButton: document.getElementById("syncButton"),
   monthInput: document.getElementById("monthInput"),
@@ -106,8 +107,11 @@ const els = {
   debtsList: document.getElementById("debtsList"),
   reportsList: document.getElementById("reportsList"),
   reportMonthInput: document.getElementById("reportMonthInput"),
+  openBudgetButton: document.getElementById("openBudgetButton"),
   saveDbButton: document.getElementById("saveDbButton"),
-  reloadDbButton: document.getElementById("reloadDbButton"),
+  logoutButton: document.getElementById("logoutButton"),
+  logoutSettingsButton: document.getElementById("logoutSettingsButton"),
+  syncStatusValue: document.getElementById("syncStatusValue"),
   resetButton: document.getElementById("resetButton"),
 };
 
@@ -159,7 +163,6 @@ function setReady(ready) {
   document.querySelectorAll(".tab-page").forEach(function (page) {
     page.style.display = ready ? "" : "none";
   });
-  updateModeLabels();
 }
 
 function activateTab(name) {
@@ -180,244 +183,145 @@ function activateTab(name) {
   }
 }
 
-function loadSettings() {
-  if (window.location.search.indexOf("reset=1") !== -1) {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(DEMO_DB_KEY);
+function supabaseConfigured() {
+  return SUPABASE_URL.indexOf("YOUR_PROJECT_REF") === -1 && SUPABASE_ANON_KEY.indexOf("YOUR_SUPABASE") === -1;
+}
+
+function createSupabaseClient() {
+  if (state.supabase) {
+    return state.supabase;
   }
-  try {
-    const settings = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (settings && settings.mode === "demo") {
-      return settings;
-    }
-    if (settings && settings.repo && settings.branch && settings.token) {
-      return settings;
-    }
-  } catch (_error) {
-    return null;
+  if (!supabaseConfigured()) {
+    throw new Error("Configure SUPABASE_URL and SUPABASE_ANON_KEY in app.js first.");
   }
-  return null;
-}
-
-function saveSettings(settings) {
-  state.settings = settings;
-  state.mode = settings && settings.mode === "demo" ? "demo" : "github";
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  updateModeLabels();
-}
-
-function fillSettingsForm() {
-  const settings = state.settings || {};
-  setSelectOptions(els.repoInput, settings.repo ? [{ value: settings.repo, label: settings.repo }] : [], "Load repositories");
-  setSelectOptions(els.branchInput, settings.branch ? [{ value: settings.branch, label: settings.branch }] : [], "Select repository first");
-  els.repoInput.value = settings.repo || "";
-  els.branchInput.value = settings.branch || "";
-  els.tokenInput.value = settings.token || "";
-  updateModeLabels();
-}
-
-function updateModeLabels() {
-  const demo = state.mode === "demo";
-  els.syncButton.textContent = demo ? "Save Demo" : "Sync";
-  els.saveDbButton.textContent = demo ? "Save Demo Database" : "Save Database Now";
-  els.reloadDbButton.textContent = demo ? "Reload Demo Database" : "Reload From GitHub";
-}
-
-function setSelectOptions(select, options, placeholder) {
-  clearNode(select);
-  const first = document.createElement("option");
-  first.value = "";
-  first.textContent = placeholder;
-  select.appendChild(first);
-  options.forEach(function (optionData) {
-    const option = document.createElement("option");
-    option.value = optionData.value;
-    option.textContent = optionData.label;
-    select.appendChild(option);
-  });
-}
-
-function tokenHeaders(token) {
-  return {
-    Accept: "application/vnd.github+json",
-    Authorization: "Bearer " + token,
-    "X-GitHub-Api-Version": "2022-11-28",
-  };
-}
-
-async function githubJson(url, token) {
-  const response = await fetch(url, { headers: tokenHeaders(token) });
-  if (!response.ok) {
-    const body = await response.json().catch(function () {
-      return {};
-    });
-    throw new Error(body.message || "GitHub error " + response.status);
+  if (!window.supabase || typeof window.supabase.createClient !== "function") {
+    throw new Error("Supabase client did not load. Check the Supabase CDN script.");
   }
-  return response.json();
+  state.supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  return state.supabase;
 }
 
-async function loadRepositories() {
-  const token = els.tokenInput.value.trim();
-  if (!token) {
-    showStatus("Paste your GitHub token first.", true);
+function budgetStoragePath() {
+  if (!state.user || !state.user.id) {
+    throw new Error("Log in before opening or saving a budget.");
+  }
+  return "budgets/" + state.user.id + "/" + DB_FILENAME;
+}
+
+function updateAuthUi() {
+  const signedIn = Boolean(state.user);
+  const email = state.user && state.user.email ? state.user.email : "";
+  els.setupView.style.display = signedIn && state.db ? "none" : "block";
+  els.tabs.classList.toggle("ready", signedIn && Boolean(state.db));
+  els.syncButton.style.display = signedIn && state.db ? "" : "none";
+  els.authForm.classList.toggle("hidden", signedIn);
+  els.sessionPanel.classList.toggle("hidden", !signedIn);
+  els.sessionSummary.textContent = signedIn ? "Signed in as " + email + "." : "";
+  els.openBudgetButton.disabled = !signedIn;
+  els.saveDbButton.disabled = !signedIn || !state.db;
+  els.logoutButton.disabled = !signedIn;
+  els.logoutSettingsButton.disabled = !signedIn;
+  els.syncStatusValue.textContent = signedIn
+    ? "Sync Status: Signed in as " + email + (state.dirty ? " - unsaved changes" : " - saved")
+    : "Sync Status: Not signed in.";
+}
+
+async function refreshSession() {
+  const supabaseClient = createSupabaseClient();
+  const result = await supabaseClient.auth.getSession();
+  if (result.error) {
+    throw result.error;
+  }
+  state.session = result.data.session;
+  state.user = state.session ? state.session.user : null;
+  updateAuthUi();
+}
+
+async function signIn(event) {
+  event.preventDefault();
+  const email = els.emailInput.value.trim();
+  const password = els.passwordInput.value;
+  if (!email || !password) {
+    showStatus("Enter your email and password.", true);
     return;
   }
-  showStatus("Loading repositories from GitHub...");
-  const repos = await githubJson(
-    "https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member",
-    token,
-  );
-  const options = repos
-    .filter(function (repo) { return !repo.archived; })
-    .map(function (repo) {
-      return { value: repo.full_name, label: repo.full_name + (repo.private ? " (private)" : "") };
-    });
-  if (!options.length) {
-    setSelectOptions(els.repoInput, [], "No repositories found");
-    setSelectOptions(els.branchInput, [], "Select repository first");
-    showStatus("No repositories were found for this token. Check token repository access.", true);
-    return;
+  showStatus("Logging in...");
+  const result = await state.supabase.auth.signInWithPassword({ email: email, password: password });
+  if (result.error) {
+    throw result.error;
   }
-  const previousRepo = els.repoInput.value || (state.settings && state.settings.repo) || "";
-  setSelectOptions(els.repoInput, options, "Select repository");
-  if (previousRepo && options.some(function (option) { return option.value === previousRepo; })) {
-    els.repoInput.value = previousRepo;
-  }
-  showStatus("Repositories loaded. Select one to load branches.");
-  if (els.repoInput.value) {
-    await loadBranches();
-  }
+  state.session = result.data.session;
+  state.user = state.session ? state.session.user : result.data.user;
+  els.passwordInput.value = "";
+  updateAuthUi();
+  await openDatabase();
 }
 
-async function loadBranches() {
-  const token = els.tokenInput.value.trim();
-  const repo = els.repoInput.value;
-  if (!token || !repo) {
-    setSelectOptions(els.branchInput, [], "Select repository first");
+async function signUp() {
+  const email = els.emailInput.value.trim();
+  const password = els.passwordInput.value;
+  if (!email || !password) {
+    showStatus("Enter your email and password.", true);
     return;
   }
-  showStatus("Loading branches...");
-  const branches = await githubJson(
-    "https://api.github.com/repos/" + repo + "/branches?per_page=100",
-    token,
-  );
-  const options = branches.map(function (branch) {
-    return { value: branch.name, label: branch.name };
-  });
-  const previousBranch = els.branchInput.value || (state.settings && state.settings.branch) || "main";
-  setSelectOptions(els.branchInput, options, "Select branch");
-  if (options.some(function (option) { return option.value === previousBranch; })) {
-    els.branchInput.value = previousBranch;
-  } else if (options.length) {
-    els.branchInput.value = options[0].value;
+  showStatus("Creating account...");
+  const result = await state.supabase.auth.signUp({ email: email, password: password });
+  if (result.error) {
+    throw result.error;
   }
-  showStatus("Branches loaded.");
+  state.session = result.data.session;
+  state.user = state.session ? state.session.user : null;
+  els.passwordInput.value = "";
+  updateAuthUi();
+  if (state.user) {
+    await openDatabase();
+    showStatus("Account created. Your budget is ready.");
+  } else {
+    showStatus("Account created. Check your email to confirm, then log in.");
+  }
   clearStatusSoon();
 }
 
-function encodedPath(filename) {
-  return filename
-    .split("/")
-    .filter(Boolean)
-    .map(encodeURIComponent)
-    .join("/");
-}
-
-function apiUrl(filename) {
-  return "https://api.github.com/repos/" + state.settings.repo + "/contents/" + encodedPath(filename);
-}
-
-function headers() {
-  return tokenHeaders(state.settings.token);
-}
-
-function bytesToBase64(bytes) {
-  let binary = "";
-  const chunk = 0x8000;
-  for (let index = 0; index < bytes.length; index += chunk) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(index, index + chunk));
+async function signOut() {
+  if (state.supabase) {
+    const result = await state.supabase.auth.signOut();
+    if (result.error) {
+      throw result.error;
+    }
   }
-  return btoa(binary);
+  state.session = null;
+  state.user = null;
+  state.db = null;
+  setReady(false);
+  updateAuthUi();
+  showStatus("Logged out.");
+  clearStatusSoon();
 }
 
-function base64ToBytes(base64) {
-  const binary = atob(base64.replace(/\s/g, ""));
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
+async function supabaseGetBytes() {
+  const path = budgetStoragePath();
+  const result = await state.supabase.storage.from(SUPABASE_BUCKET).download(path);
+  if (result.error) {
+    const status = Number(result.error.statusCode || result.error.status || 0);
+    if (status === 404 || String(result.error.message || "").toLowerCase().indexOf("not found") !== -1) {
+      return null;
+    }
+    throw result.error;
   }
-  return bytes;
+  return new Uint8Array(await result.data.arrayBuffer());
 }
 
-async function githubGetFile(filename) {
-  const response = await fetch(apiUrl(filename) + "?ref=" + encodeURIComponent(state.settings.branch), {
-    headers: headers(),
+async function supabasePutBytes(bytes) {
+  const path = budgetStoragePath();
+  const file = new Blob([bytes], { type: "application/x-sqlite3" });
+  const result = await state.supabase.storage.from(SUPABASE_BUCKET).upload(path, file, {
+    contentType: "application/x-sqlite3",
+    upsert: true,
   });
-  if (response.status === 404) {
-    return null;
+  if (result.error) {
+    throw result.error;
   }
-  if (!response.ok) {
-    const body = await response.json().catch(function () {
-      return {};
-    });
-    throw new Error(body.message || "GitHub error " + response.status);
-  }
-  return response.json();
-}
-
-async function githubGetBytes(filename) {
-  const file = await githubGetFile(filename);
-  if (!file) {
-    return { bytes: null, sha: null };
-  }
-  if (file.content && file.encoding === "base64") {
-    return { bytes: base64ToBytes(file.content), sha: file.sha };
-  }
-  if (file.git_url) {
-    const blobResponse = await fetch(file.git_url, { headers: headers() });
-    if (!blobResponse.ok) {
-      throw new Error("Could not download " + filename + " from GitHub's blob API.");
-    }
-    const blob = await blobResponse.json();
-    if (blob.content && blob.encoding === "base64") {
-      return { bytes: base64ToBytes(blob.content), sha: file.sha };
-    }
-  }
-  if (!file.download_url) {
-    throw new Error("GitHub did not return downloadable content for " + filename + ".");
-  }
-  const response = await fetch(file.download_url, { headers: headers() });
-  if (!response.ok) {
-    throw new Error("Could not download " + filename + " from GitHub.");
-  }
-  return { bytes: new Uint8Array(await response.arrayBuffer()), sha: file.sha };
-}
-
-async function githubPutBytes(filename, bytes, sha) {
-  const body = {
-    message: "Save Christendom Budgeting database",
-    content: bytesToBase64(bytes),
-    branch: state.settings.branch,
-  };
-  if (sha) {
-    body.sha = sha;
-  }
-  const response = await fetch(apiUrl(filename), {
-    method: "PUT",
-    headers: Object.assign({}, headers(), { "Content-Type": "application/json" }),
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(function () {
-      return {};
-    });
-    const message = error.message || "GitHub error " + response.status;
-    if (response.status === 409) {
-      throw new Error("GitHub has a newer database version. Reload from GitHub before saving again.");
-    }
-    throw new Error(message);
-  }
-  return response.json();
+  return result.data;
 }
 
 async function loadSqlJsLibrary() {
@@ -693,113 +597,23 @@ function addBudgetLine(month, categoryName, kind, planned) {
   );
 }
 
-function seedDemoDatabase() {
-  if (Number(scalar("SELECT COUNT(*) count FROM accounts", [], "count")) > 0) {
-    return false;
-  }
-  const month = currentMonth();
-  state.db.run("UPDATE categories SET monthly_limit = 1600 WHERE name = 'Housing' AND kind = 'expense'");
-  state.db.run("UPDATE categories SET monthly_limit = 650 WHERE name = 'Groceries' AND kind = 'expense'");
-  state.db.run("UPDATE categories SET monthly_limit = 260 WHERE name = 'Gas' AND kind = 'expense'");
-  state.db.run("UPDATE categories SET monthly_limit = 350 WHERE name = 'Debt' AND kind = 'expense'");
-  state.db.run("UPDATE categories SET monthly_limit = 750 WHERE name = 'Savings' AND kind = 'expense'");
-  state.db.run("UPDATE categories SET monthly_limit = 200 WHERE name = 'Giving' AND kind = 'expense'");
-  state.db.run("UPDATE categories SET monthly_limit = 250 WHERE name = 'Entertainment' AND kind = 'expense'");
-  state.db.run("UPDATE categories SET monthly_limit = 140 WHERE name = 'Medical' AND kind = 'expense'");
-  state.db.run(
-    "INSERT INTO accounts(name, type, opening_balance, include_in_net_worth) VALUES (?, ?, ?, ?)",
-    ["Chequing", "Chequing", 1250, 1],
-  );
-  state.db.run(
-    "INSERT INTO accounts(name, type, opening_balance, include_in_net_worth) VALUES (?, ?, ?, ?)",
-    ["Savings", "Savings", 5200, 1],
-  );
-  state.db.run(
-    "INSERT INTO accounts(name, type, opening_balance, include_in_net_worth) VALUES (?, ?, ?, ?)",
-    ["Credit Card", "Credit Card", 0, 1],
-  );
-  const chequing = accountId("Chequing");
-  const savings = accountId("Savings");
-  const creditCard = accountId("Credit Card");
-  const paycheque = categoryId("Paycheque", "income");
-  const housing = categoryId("Housing", "expense");
-  const groceries = categoryId("Groceries", "expense");
-  const gas = categoryId("Gas", "expense");
-  const savingsCategory = categoryId("Savings", "expense");
-  const entertainment = categoryId("Entertainment", "expense");
-  const debt = categoryId("Debt", "expense");
-  [
-    [chequing, paycheque, month + "-01", "income", 4200, "Employer", "Demo paycheque"],
-    [chequing, housing, month + "-02", "expense", 1600, "Rent", ""],
-    [creditCard, groceries, month + "-04", "expense", 86.42, "Market", "Weekly groceries"],
-    [creditCard, gas, month + "-07", "expense", 63.18, "Gas Station", ""],
-    [savings, savingsCategory, month + "-08", "expense", 750, "Savings Transfer", ""],
-    [creditCard, entertainment, month + "-10", "expense", 42.5, "Coffee", "Demo transaction"],
-    [chequing, debt, month + "-12", "expense", 350, "Car Loan", "Minimum plus extra"],
-  ].forEach(function (tx) {
-    state.db.run(
-      "INSERT INTO transactions(account_id, category_id, date, type, amount, vendor, notes, source, external_id) VALUES (?, ?, ?, ?, ?, ?, ?, 'demo', ?)",
-      tx.concat(["demo-" + tx[2] + "-" + tx[5].toLowerCase().replace(/\s+/g, "-")]),
-    );
-  });
-  addBudgetLine(month, "Paycheque", "income", 4200);
-  addBudgetLine(month, "Housing", "expense", 1600);
-  addBudgetLine(month, "Groceries", "expense", 650);
-  addBudgetLine(month, "Gas", "expense", 260);
-  addBudgetLine(month, "Debt", "expense", 350);
-  addBudgetLine(month, "Savings", "expense", 750);
-  addBudgetLine(month, "Giving", "expense", 200);
-  addBudgetLine(month, "Entertainment", "expense", 250);
-  addBudgetLine(month, "Medical", "expense", 140);
-  state.db.run(
-    "INSERT INTO debts(account_id, name, balance, interest_rate, minimum_payment, extra_payment) VALUES (?, ?, ?, ?, ?, ?)",
-    [creditCard, "Credit Card", 625, 19.99, 75, 50],
-  );
-  state.db.run(
-    "INSERT INTO debts(account_id, name, balance, interest_rate, minimum_payment, extra_payment) VALUES (?, ?, ?, ?, ?, ?)",
-    [null, "Car Loan", 8400, 6.5, 300, 50],
-  );
-  return true;
-}
-
 async function openDatabase() {
-  if (state.settings && state.settings.mode === "demo") {
-    await openDemoDatabase();
+  if (!state.user) {
+    showStatus("Log in before opening a budget.", true);
     return;
   }
-  showStatus("Opening SQLite database from GitHub...");
+  showStatus("Opening budget from Supabase...");
   const SQL = await loadSqlJsLibrary();
-  const result = await githubGetBytes(DB_FILENAME);
-  state.dbSha = result.sha;
-  state.db = result.bytes ? new SQL.Database(result.bytes) : new SQL.Database();
+  const bytes = await supabaseGetBytes();
+  state.db = bytes ? new SQL.Database(bytes) : new SQL.Database();
   migrateDatabase();
-  state.dirty = !result.bytes;
+  state.dirty = !bytes;
   syncDebtBudgetIfNeeded(state.month);
   renderAll();
   setReady(true);
+  updateAuthUi();
   activateTab("add");
-  showStatus(result.bytes ? "Database loaded. Ready to enter transactions." : "No database found. A new one is ready to save.");
-  clearStatusSoon();
-}
-
-async function openDemoDatabase() {
-  showStatus("Opening demo database...");
-  const SQL = await loadSqlJsLibrary();
-  const saved = localStorage.getItem(DEMO_DB_KEY);
-  state.dbSha = null;
-  state.db = saved ? new SQL.Database(base64ToBytes(saved)) : new SQL.Database();
-  migrateDatabase();
-  const seeded = seedDemoDatabase();
-  state.dirty = seeded;
-  syncDebtBudgetIfNeeded(state.month);
-  renderAll();
-  setReady(true);
-  activateTab("add");
-  if (seeded || !saved) {
-    localStorage.setItem(DEMO_DB_KEY, bytesToBase64(state.db.export()));
-    state.dirty = false;
-  }
-  showStatus(seeded ? "Demo budget loaded. Changes stay in this browser only." : "Demo database loaded from this browser.");
+  showStatus(bytes ? "Budget loaded. Ready to enter transactions." : "No saved budget found. A new one is ready to save.");
   clearStatusSoon();
 }
 
@@ -808,21 +622,18 @@ async function saveDatabase() {
     showStatus("Open a database first.", true);
     return;
   }
-  if (state.settings && state.settings.mode === "demo") {
-    localStorage.setItem(DEMO_DB_KEY, bytesToBase64(state.db.export()));
-    state.dirty = false;
-    showStatus("Demo database saved in this browser.");
-    clearStatusSoon();
+  if (!state.user) {
+    showStatus("Log in before saving a budget.", true);
     return;
   }
   state.saving = true;
-  showStatus("Saving budget.sqlite3 to GitHub...");
+  showStatus("Saving budget to Supabase...");
   try {
     const bytes = state.db.export();
-    const result = await githubPutBytes(DB_FILENAME, bytes, state.dbSha);
-    state.dbSha = result.content ? result.content.sha : state.dbSha;
+    await supabasePutBytes(bytes);
     state.dirty = false;
-    showStatus("Database saved to GitHub.");
+    updateAuthUi();
+    showStatus("Budget saved to Supabase.");
     clearStatusSoon();
   } catch (error) {
     showStatus(error.message, true);
@@ -1912,38 +1723,11 @@ async function importCsvFile(file) {
 }
 
 function bindEvents() {
-  els.demoButton.addEventListener("click", async function () {
-    saveSettings({ mode: "demo" });
-    try {
-      await openDatabase();
-    } catch (error) {
-      setReady(false);
-      showStatus(error.message, true);
-    }
+  els.authForm.addEventListener("submit", function (event) {
+    signIn(event).catch(function (error) { showStatus(error.message, true); });
   });
-  els.loadReposButton.addEventListener("click", function () {
-    loadRepositories().catch(function (error) { showStatus(error.message, true); });
-  });
-  els.repoInput.addEventListener("change", function () {
-    loadBranches().catch(function (error) { showStatus(error.message, true); });
-  });
-  els.settingsForm.addEventListener("submit", async function (event) {
-    event.preventDefault();
-    if (!els.repoInput.value || !els.branchInput.value) {
-      showStatus("Load repositories, then choose a repository and branch.", true);
-      return;
-    }
-    saveSettings({
-      repo: els.repoInput.value,
-      branch: els.branchInput.value,
-      token: els.tokenInput.value.trim(),
-    });
-    try {
-      await openDatabase();
-    } catch (error) {
-      setReady(false);
-      showStatus(error.message, true);
-    }
+  els.signUpButton.addEventListener("click", function () {
+    signUp().catch(function (error) { showStatus(error.message, true); });
   });
   els.tabs.addEventListener("click", function (event) {
     const button = event.target.closest("button[data-tab]");
@@ -1952,32 +1736,25 @@ function bindEvents() {
     }
   });
   els.syncButton.addEventListener("click", function () {
-    if (state.settings && state.settings.mode === "demo") {
-      saveDatabase().catch(function () {});
-      return;
-    }
-    if (state.dirty) {
-      saveDatabase().catch(function () {});
-    } else {
-      openDatabase().catch(function (error) { showStatus(error.message, true); });
-    }
+    saveDatabase().catch(function (error) { showStatus(error.message, true); });
   });
-  els.saveDbButton.addEventListener("click", function () {
-    saveDatabase().catch(function () {});
-  });
-  els.reloadDbButton.addEventListener("click", function () {
+  els.openBudgetButton.addEventListener("click", function () {
     openDatabase().catch(function (error) { showStatus(error.message, true); });
   });
+  els.saveDbButton.addEventListener("click", function () {
+    saveDatabase().catch(function (error) { showStatus(error.message, true); });
+  });
+  els.logoutButton.addEventListener("click", function () {
+    signOut().catch(function (error) { showStatus(error.message, true); });
+  });
+  els.logoutSettingsButton.addEventListener("click", function () {
+    signOut().catch(function (error) { showStatus(error.message, true); });
+  });
   els.resetButton.addEventListener("click", function () {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(DEMO_DB_KEY);
-    state.settings = null;
-    state.mode = "github";
     state.db = null;
-    state.dbSha = null;
-    fillSettingsForm();
     setReady(false);
-    showStatus("Web settings cleared.");
+    updateAuthUi();
+    showStatus("Local app state cleared. Your Supabase budget file was not deleted.");
   });
   els.monthInput.addEventListener("change", function () {
     setBudgetMonth(els.monthInput.value).catch(function (error) { showStatus(error.message, true); });
@@ -2063,16 +1840,24 @@ function bindEvents() {
 }
 
 async function init() {
+  createSupabaseClient();
   bindEvents();
   els.txDate.value = today();
   els.monthInput.value = state.month;
   els.reportMonthInput.value = state.month;
   els.budgetMonth.value = state.month;
-  state.settings = loadSettings();
-  state.mode = state.settings && state.settings.mode === "demo" ? "demo" : "github";
-  fillSettingsForm();
   setReady(false);
-  if (state.settings) {
+  await refreshSession();
+  state.supabase.auth.onAuthStateChange(function (_event, session) {
+    state.session = session;
+    state.user = session ? session.user : null;
+    if (!state.user) {
+      state.db = null;
+      setReady(false);
+    }
+    updateAuthUi();
+  });
+  if (state.user) {
     try {
       await openDatabase();
     } catch (error) {
@@ -2084,5 +1869,8 @@ async function init() {
 
 init().catch(function (error) {
   setReady(false);
+  if (els.syncStatusValue) {
+    els.syncStatusValue.textContent = "Sync Status: " + error.message;
+  }
   showStatus(error.message, true);
 });

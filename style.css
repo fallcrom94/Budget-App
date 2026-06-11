@@ -123,6 +123,11 @@ h2 {
   margin-bottom: 10px;
 }
 
+.session-panel {
+  display: grid;
+  gap: 12px;
+}
+
 .tutorial summary {
   min-height: 44px;
   display: flex;

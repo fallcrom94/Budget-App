@@ -54,6 +54,7 @@ const els = {
   txDate: document.getElementById("txDate"),
   txAccount: document.getElementById("txAccount"),
   txCategory: document.getElementById("txCategory"),
+  txDebt: document.getElementById("txDebt"),
   txVendor: document.getElementById("txVendor"),
   txNotes: document.getElementById("txNotes"),
   vendorList: document.getElementById("vendorList"),
@@ -496,6 +497,7 @@ function migrateDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
       category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+      debt_id INTEGER REFERENCES debts(id) ON DELETE SET NULL,
       date TEXT NOT NULL,
       type TEXT NOT NULL CHECK (type IN ('income','expense')),
       amount REAL NOT NULL CHECK (amount >= 0),
@@ -556,11 +558,15 @@ function migrateDatabase() {
   if (columns.indexOf("external_id") === -1) {
     state.db.run("ALTER TABLE transactions ADD COLUMN external_id TEXT");
   }
+  if (columns.indexOf("debt_id") === -1) {
+    state.db.run("ALTER TABLE transactions ADD COLUMN debt_id INTEGER REFERENCES debts(id) ON DELETE SET NULL");
+  }
   state.db.run(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_source_external
     ON transactions(source, external_id)
     WHERE external_id IS NOT NULL AND external_id <> ''
   `);
+  state.db.run("CREATE INDEX IF NOT EXISTS idx_transactions_debt ON transactions(debt_id)");
   if (Number(scalar("SELECT COUNT(*) count FROM categories", [], "count")) === 0) {
     DEFAULT_CATEGORIES.forEach(function (category) {
       state.db.run(
@@ -579,6 +585,92 @@ function categoryId(name, kind) {
 function accountId(name) {
   const row = one("SELECT id FROM accounts WHERE name = ?", [name]);
   return row ? Number(row.id) : null;
+}
+
+function debtCategoryId() {
+  let id = categoryId("Debt", "expense");
+  if (!id) {
+    run("INSERT INTO categories(name, kind, monthly_limit, color, is_default) VALUES ('Debt', 'expense', 0, '#dc2626', 1)");
+    id = categoryId("Debt", "expense");
+  }
+  return id;
+}
+
+function monthlyDebtPaymentTotal() {
+  return Number(scalar(
+    "SELECT COALESCE(SUM(minimum_payment + extra_payment), 0) total FROM debts",
+    [],
+    "total",
+  ));
+}
+
+function syncDebtBudget(month) {
+  const debtTotal = monthlyDebtPaymentTotal();
+  const category = debtCategoryId();
+  if (!category) {
+    return;
+  }
+  if (debtTotal > 0) {
+    run(
+      `INSERT INTO budgets(month, category_id, planned, carry_forward)
+       VALUES (?, ?, ?, 0)
+       ON CONFLICT(month, category_id)
+       DO UPDATE SET planned = excluded.planned, updated_at = CURRENT_TIMESTAMP`,
+      [month, category, debtTotal],
+    );
+  } else {
+    run("DELETE FROM budgets WHERE month = ? AND category_id = ?", [month, category]);
+  }
+}
+
+function syncDebtBudgetIfNeeded(month) {
+  if (monthlyDebtPaymentTotal() <= 0) {
+    return false;
+  }
+  const category = debtCategoryId();
+  if (!category) {
+    return false;
+  }
+  const current = Number(scalar(
+    "SELECT COALESCE(planned, 0) planned FROM budgets WHERE month = ? AND category_id = ?",
+    [month, category],
+    "planned",
+  ));
+  const expected = monthlyDebtPaymentTotal();
+  if (Math.abs(current - expected) < 0.005) {
+    return false;
+  }
+  syncDebtBudget(month);
+  return true;
+}
+
+async function setBudgetMonth(month) {
+  state.month = month || currentMonth();
+  const synced = syncDebtBudgetIfNeeded(state.month);
+  if (synced) {
+    await saveAfterChange("Debt payment budget updated for " + state.month + ".");
+  } else {
+    renderAll();
+  }
+}
+
+function transactionDebtImpact(tx) {
+  if (!tx || !tx.debt_id || tx.type !== "expense") {
+    return 0;
+  }
+  return Number(tx.amount || 0);
+}
+
+function applyDebtImpact(tx, undo) {
+  const impact = transactionDebtImpact(tx);
+  if (!impact) {
+    return;
+  }
+  if (undo) {
+    run("UPDATE debts SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [impact, Number(tx.debt_id)]);
+  } else {
+    run("UPDATE debts SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [impact, Number(tx.debt_id)]);
+  }
 }
 
 function addBudgetLine(month, categoryName, kind, planned) {
@@ -676,6 +768,7 @@ async function openDatabase() {
   state.db = result.bytes ? new SQL.Database(result.bytes) : new SQL.Database();
   migrateDatabase();
   state.dirty = !result.bytes;
+  syncDebtBudgetIfNeeded(state.month);
   renderAll();
   setReady(true);
   activateTab("add");
@@ -692,6 +785,7 @@ async function openDemoDatabase() {
   migrateDatabase();
   const seeded = seedDemoDatabase();
   state.dirty = seeded;
+  syncDebtBudgetIfNeeded(state.month);
   renderAll();
   setReady(true);
   activateTab("add");
@@ -821,14 +915,21 @@ function renderAll() {
 function renderSelectors() {
   const accounts = all("SELECT * FROM accounts ORDER BY name");
   const categories = all("SELECT * FROM categories ORDER BY kind, name");
+  const debts = all("SELECT * FROM debts ORDER BY name");
   const oldAccount = els.txAccount.value;
   const oldDebtAccount = els.debtAccount.value;
+  const oldTransactionDebt = els.txDebt.value;
   clearNode(els.txAccount);
   clearNode(els.debtAccount);
+  clearNode(els.txDebt);
   const noDebtAccount = document.createElement("option");
   noDebtAccount.value = "";
   noDebtAccount.textContent = "No Linked Account";
   els.debtAccount.appendChild(noDebtAccount);
+  const noTransactionDebt = document.createElement("option");
+  noTransactionDebt.value = "";
+  noTransactionDebt.textContent = "No Linked Debt";
+  els.txDebt.appendChild(noTransactionDebt);
   accounts.forEach(function (account) {
     const label = account.name + " (" + displayText(account.type) + ")";
     const option = document.createElement("option");
@@ -842,6 +943,13 @@ function renderSelectors() {
   });
   els.txAccount.value = oldAccount || (accounts[0] ? String(accounts[0].id) : "");
   els.debtAccount.value = oldDebtAccount || "";
+  debts.forEach(function (debt) {
+    const option = document.createElement("option");
+    option.value = debt.id;
+    option.textContent = debt.name + " (" + money(debt.balance) + ")";
+    els.txDebt.appendChild(option);
+  });
+  els.txDebt.value = oldTransactionDebt || "";
   fillCategorySelect(els.txCategory, categories, els.txType.value, true);
   fillCategorySelect(els.expectedIncomeCategory, categories, "income", false);
   fillCategorySelect(els.budgetCategory, categories, "expense", false);
@@ -874,6 +982,13 @@ function fillCategorySelect(select, categories, kind, allowEmpty) {
   select.value = current;
   if (!select.value && !allowEmpty && select.options.length) {
     select.value = select.options[0].value;
+  }
+}
+
+function chooseDebtCategory() {
+  const id = categoryId("Debt", "expense");
+  if (id) {
+    els.txCategory.value = String(id);
   }
 }
 
@@ -953,11 +1068,12 @@ function renderTransactions() {
   clearNode(els.transactionList);
   const search = "%" + String(els.transactionSearch.value || "").toLowerCase() + "%";
   const rows = all(`
-    SELECT t.*, a.name account, COALESCE(c.name, '') category
+    SELECT t.*, a.name account, COALESCE(c.name, '') category, COALESCE(d.name, '') debt
     FROM transactions t
     JOIN accounts a ON a.id = t.account_id
     LEFT JOIN categories c ON c.id = t.category_id
-    WHERE lower(t.vendor || ' ' || t.notes || ' ' || a.name || ' ' || COALESCE(c.name, '')) LIKE ?
+    LEFT JOIN debts d ON d.id = t.debt_id
+    WHERE lower(t.vendor || ' ' || t.notes || ' ' || a.name || ' ' || COALESCE(c.name, '') || ' ' || COALESCE(d.name, '')) LIKE ?
     ORDER BY t.date DESC, t.id DESC
     LIMIT 250
   `, [search]);
@@ -966,7 +1082,7 @@ function renderTransactions() {
   }
   rows.forEach(function (tx) {
     const title = tx.vendor || tx.notes || tx.category || "Transaction";
-    const detail = [tx.date, tx.account, tx.category, displayText(tx.type), tx.notes].filter(Boolean).join(" - ");
+    const detail = [tx.date, tx.account, tx.category, tx.debt ? "Debt: " + tx.debt : "", displayText(tx.type), tx.notes].filter(Boolean).join(" - ");
     addRow(els.transactionList, title, money(tx.amount), detail, tx.type === "income" ? "positive" : "negative", [
       { label: "Edit", action: "edit-transaction", id: tx.id },
       { label: "Delete", action: "delete-transaction", id: tx.id, danger: true },
@@ -1301,28 +1417,37 @@ async function saveTransaction(event) {
     return;
   }
   const accountId = Number(els.txAccount.value || 0);
-  const categoryId = els.txCategory.value ? Number(els.txCategory.value) : null;
+  const debtId = els.txDebt.value ? Number(els.txDebt.value) : null;
+  const categoryId = els.txCategory.value ? Number(els.txCategory.value) : (debtId ? debtCategoryId() : null);
   const amount = Math.abs(numberValue(els.txAmount));
   if (!accountId || amount <= 0) {
     showStatus("Choose an account and enter an amount.", true);
     return;
   }
+  if (debtId && els.txType.value !== "expense") {
+    showStatus("Linked debt transactions must be expenses.", true);
+    return;
+  }
   if (state.editingTransactionId) {
+    const oldTx = one("SELECT * FROM transactions WHERE id = ?", [state.editingTransactionId]);
+    applyDebtImpact(oldTx, true);
     run(
       `UPDATE transactions
-       SET account_id = ?, category_id = ?, date = ?, type = ?, amount = ?, vendor = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+       SET account_id = ?, category_id = ?, debt_id = ?, date = ?, type = ?, amount = ?, vendor = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [accountId, categoryId, els.txDate.value || today(), els.txType.value, amount, els.txVendor.value.trim(), els.txNotes.value.trim(), state.editingTransactionId],
+      [accountId, categoryId, debtId, els.txDate.value || today(), els.txType.value, amount, els.txVendor.value.trim(), els.txNotes.value.trim(), state.editingTransactionId],
     );
+    applyDebtImpact({ debt_id: debtId, type: els.txType.value, amount: amount }, false);
     state.editingTransactionId = null;
     els.transactionSubmit.textContent = "Save Transaction";
   } else {
     run(
-      `INSERT INTO transactions(account_id, category_id, date, type, amount, vendor, notes, source, external_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'web', ?)`,
+      `INSERT INTO transactions(account_id, category_id, debt_id, date, type, amount, vendor, notes, source, external_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'web', ?)`,
       [
         accountId,
         categoryId,
+        debtId,
         els.txDate.value || today(),
         els.txType.value,
         amount,
@@ -1331,17 +1456,20 @@ async function saveTransaction(event) {
         "web-" + Date.now() + "-" + Math.random().toString(16).slice(2),
       ],
     );
+    applyDebtImpact({ debt_id: debtId, type: els.txType.value, amount: amount }, false);
   }
   const keepDate = els.txDate.value;
   const keepAccount = els.txAccount.value;
   const keepCategory = els.txCategory.value;
   const keepType = els.txType.value;
+  const keepDebt = els.txDebt.value;
   els.transactionForm.reset();
   els.txDate.value = keepDate || today();
   els.txType.value = keepType || "expense";
   renderSelectors();
   els.txAccount.value = keepAccount;
   els.txCategory.value = keepCategory;
+  els.txDebt.value = keepDebt;
   await saveAfterChange("Transaction saved.");
   els.txAmount.focus();
 }
@@ -1358,6 +1486,7 @@ function editTransaction(id) {
   renderSelectors();
   els.txAccount.value = tx.account_id;
   els.txCategory.value = tx.category_id || "";
+  els.txDebt.value = tx.debt_id || "";
   els.txVendor.value = tx.vendor || "";
   els.txNotes.value = tx.notes || "";
   els.transactionSubmit.textContent = "Update Transaction";
@@ -1367,6 +1496,19 @@ function editTransaction(id) {
 async function deleteById(table, id, message) {
   run("DELETE FROM " + table + " WHERE id = ?", [Number(id)]);
   await saveAfterChange(message);
+}
+
+async function deleteTransaction(id) {
+  const tx = one("SELECT * FROM transactions WHERE id = ?", [Number(id)]);
+  applyDebtImpact(tx, true);
+  run("DELETE FROM transactions WHERE id = ?", [Number(id)]);
+  await saveAfterChange("Transaction deleted.");
+}
+
+async function deleteDebt(id) {
+  run("DELETE FROM debts WHERE id = ?", [Number(id)]);
+  syncDebtBudget(state.month);
+  await saveAfterChange("Debt deleted. Monthly debt budget updated.");
 }
 
 async function saveAccount(event) {
@@ -1475,6 +1617,7 @@ async function saveBudget(event) {
     [els.budgetMonth.value || state.month, Number(els.budgetCategory.value), numberValue(els.budgetPlanned), els.budgetCarry.checked ? 1 : 0],
   );
   state.month = els.budgetMonth.value || state.month;
+  syncDebtBudgetIfNeeded(state.month);
   els.budgetPlanned.value = "";
   els.budgetCarry.checked = false;
   const summary = zeroBudgetSummary(state.month);
@@ -1501,6 +1644,7 @@ async function resetBudgetFromDefaults() {
     );
   });
   state.month = month;
+  syncDebtBudgetIfNeeded(month);
   const summary = zeroBudgetSummary(month);
   await saveAfterChange("Reset " + rows.length + " allocation(s) from defaults. Left to allocate: " + money(summary.left) + ".");
 }
@@ -1523,19 +1667,21 @@ async function saveDebt(event) {
       numberValue(els.debtExtra),
     ],
   );
+  syncDebtBudget(state.month);
   els.debtForm.reset();
-  await saveAfterChange("Debt added.");
+  await saveAfterChange("Debt added. Monthly debt budget updated.");
 }
 
 function exportCsv() {
   const rows = all(`
-    SELECT t.date, a.name account, COALESCE(c.name, '') category, t.type, t.amount, t.vendor, t.notes
+    SELECT t.date, a.name account, COALESCE(c.name, '') category, COALESCE(d.name, '') debt, t.type, t.amount, t.vendor, t.notes
     FROM transactions t
     JOIN accounts a ON a.id = t.account_id
     LEFT JOIN categories c ON c.id = t.category_id
+    LEFT JOIN debts d ON d.id = t.debt_id
     ORDER BY t.date DESC, t.id DESC
   `);
-  const header = ["date", "account", "category", "type", "amount", "vendor", "notes"];
+  const header = ["date", "account", "category", "debt", "type", "amount", "vendor", "notes"];
   const lines = [header.join(",")].concat(rows.map(function (row) {
     return header.map(function (key) {
       const value = String(row[key] == null ? "" : row[key]);
@@ -1616,15 +1762,23 @@ async function importCsvFile(file) {
     if (raw.category) {
       category = one("SELECT * FROM categories WHERE lower(name) = lower(?) AND kind = ?", [raw.category.trim(), txType]);
     }
+    let debt = null;
+    if (raw.debt) {
+      debt = one("SELECT * FROM debts WHERE lower(name) = lower(?)", [raw.debt.trim()]);
+    }
+    if (debt && txType !== "expense") {
+      return;
+    }
     const amount = Math.abs(Number(raw.amount || 0));
     if (!amount) {
       return;
     }
     run(
-      "INSERT INTO transactions(account_id, category_id, date, type, amount, vendor, notes, source, external_id) VALUES (?, ?, ?, ?, ?, ?, ?, 'web-csv', ?)",
+      "INSERT INTO transactions(account_id, category_id, debt_id, date, type, amount, vendor, notes, source, external_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'web-csv', ?)",
       [
         account.id,
         category ? category.id : null,
+        debt ? debt.id : null,
         raw.date || today(),
         txType,
         amount,
@@ -1633,6 +1787,7 @@ async function importCsvFile(file) {
         "csv-" + Date.now() + "-" + imported,
       ],
     );
+    applyDebtImpact({ debt_id: debt ? debt.id : null, type: txType, amount: amount }, false);
     imported += 1;
   });
   await saveAfterChange("Imported " + imported + " transaction(s).");
@@ -1707,15 +1862,23 @@ function bindEvents() {
     showStatus("Web settings cleared.");
   });
   els.monthInput.addEventListener("change", function () {
-    state.month = els.monthInput.value || currentMonth();
-    renderAll();
+    setBudgetMonth(els.monthInput.value).catch(function (error) { showStatus(error.message, true); });
   });
   els.reportMonthInput.addEventListener("change", function () {
-    state.month = els.reportMonthInput.value || currentMonth();
-    renderAll();
+    setBudgetMonth(els.reportMonthInput.value).catch(function (error) { showStatus(error.message, true); });
   });
   els.txType.addEventListener("change", function () {
+    if (els.txType.value !== "expense") {
+      els.txDebt.value = "";
+    }
     renderSelectors();
+  });
+  els.txDebt.addEventListener("change", function () {
+    if (els.txDebt.value) {
+      els.txType.value = "expense";
+      renderSelectors();
+      chooseDebtCategory();
+    }
   });
   els.transactionSearch.addEventListener("input", renderTransactions);
   els.transactionForm.addEventListener("submit", function (event) {
@@ -1757,7 +1920,7 @@ function bindEvents() {
     if (action === "edit-transaction") {
       editTransaction(id);
     } else if (action === "delete-transaction" && confirm("Delete this transaction?")) {
-      deleteById("transactions", id, "Transaction deleted.").catch(function (error) { showStatus(error.message, true); });
+      deleteTransaction(id).catch(function (error) { showStatus(error.message, true); });
     } else if (action === "delete-account" && confirm("Delete this account and its transactions?")) {
       deleteById("accounts", id, "Account deleted.").catch(function (error) { showStatus(error.message, true); });
     } else if (action === "edit-category") {
@@ -1770,7 +1933,7 @@ function bindEvents() {
     } else if (action === "delete-budget" && confirm("Delete this budget line?")) {
       deleteById("budgets", id, "Budget deleted.").catch(function (error) { showStatus(error.message, true); });
     } else if (action === "delete-debt" && confirm("Delete this debt?")) {
-      deleteById("debts", id, "Debt deleted.").catch(function (error) { showStatus(error.message, true); });
+      deleteDebt(id).catch(function (error) { showStatus(error.message, true); });
     }
   });
 }

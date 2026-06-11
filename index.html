@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Christendom Budgeting</title>
-    <link rel="stylesheet" href="style.css?v=20260611-9">
+    <link rel="stylesheet" href="style.css?v=20260611-10">
   </head>
   <body>
     <main class="app-shell">
@@ -68,6 +68,7 @@
             <label>Date<input id="txDate" type="date" required></label>
             <label>Account<select id="txAccount" required></select></label>
             <label>Category<select id="txCategory"></select></label>
+            <label>Linked Debt<select id="txDebt"></select></label>
             <label>Vendor<input id="txVendor" list="vendorList" autocomplete="off" placeholder="Vendor"></label>
             <datalist id="vendorList"></datalist>
             <label class="wide">Notes<textarea id="txNotes" rows="2" placeholder="Notes"></textarea></label>
@@ -98,7 +99,7 @@
             <button id="exportCsvButton" class="secondary small" type="button">Export CSV</button>
           </div>
           <div class="tool-row">
-            <input id="transactionSearch" placeholder="Search vendor, notes, account, category">
+            <input id="transactionSearch" placeholder="Search vendor, notes, account, category, debt">
             <label class="file-button">Import CSV<input id="importCsvInput" type="file" accept=".csv,text/csv"></label>
           </div>
           <div id="transactionList" class="list"></div>
@@ -196,6 +197,6 @@
       </section>
     </main>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
-    <script src="app.js?v=20260611-9"></script>
+    <script src="app.js?v=20260611-10"></script>
   </body>
 </html>

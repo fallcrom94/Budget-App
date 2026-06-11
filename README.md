@@ -71,7 +71,17 @@ Budgeting:
 3. Allocate that income across expense, savings, giving, debt, and other categories.
 4. Keep allocating until `Left To Allocate` is `$0.00`.
 
+Debt payments are added to the monthly budget automatically. The app sets the `Debt`
+allocation to the total of all tracked debts' minimum plus extra payments.
+
 The budget is green when every dollar is assigned and red while money is still unallocated or overallocated.
+
+Debt tracking:
+
+1. Add each debt in the `Debts` tab with its balance, interest rate, minimum payment, and extra payment.
+2. When recording a debt payment transaction, choose the matching debt in `Linked Debt`.
+3. Linked debt expense transactions reduce that debt's tracked balance.
+4. Editing or deleting a linked transaction reverses the old balance impact before applying the new one.
 
 ## Features
 
@@ -86,7 +96,7 @@ The budget is green when every dollar is assigned and red while money is still u
 - Editable categories
 - Zero-based monthly budgets where expected income must be allocated across categories
 - Category allocation defaults and reset-from-defaults
-- Debts
+- Debts with automatic monthly budget allocations and linked payment transactions
 - Comprehensive past-month reports for cash flow, savings rate, budget performance, categories, income sources, accounts, and debt payoff
 
 ## Conflict Handling

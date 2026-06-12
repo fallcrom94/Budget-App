@@ -2,6 +2,19 @@ const DB_FILENAME = "budget.sqlite3";
 const SUPABASE_URL = "https://uhzgrdivbkhqfxgwdzsd.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_KPhJfS-UNgyV5C3v-RVO_A_e0SP96Iy";
 const SUPABASE_BUCKET = "budget-files";
+const TAB_ORDER_STORAGE_KEY = "christendomBudgetTabOrder";
+const DEFAULT_TABS = [
+  { id: "add", label: "Add" },
+  { id: "dashboard", label: "Dashboard" },
+  { id: "transactions", label: "Transactions" },
+  { id: "recurring", label: "Recurring" },
+  { id: "accounts", label: "Accounts" },
+  { id: "categories", label: "Categories" },
+  { id: "budgets", label: "Budgets" },
+  { id: "debts", label: "Debts" },
+  { id: "reports", label: "Reports" },
+  { id: "settings", label: "Settings" },
+];
 
 const state = {
   SQL: null,
@@ -22,7 +35,6 @@ const state = {
   editingCategoryId: null,
   editingDebtId: null,
   editingRecurringId: null,
-  editingExpectedIncomeId: null,
   editingBudgetId: null,
   dirty: false,
   saving: false,
@@ -117,12 +129,6 @@ const els = {
   categorySubmitButton: document.getElementById("categorySubmitButton"),
   cancelCategoryEditButton: document.getElementById("cancelCategoryEditButton"),
   categoriesList: document.getElementById("categoriesList"),
-  expectedIncomeForm: document.getElementById("expectedIncomeForm"),
-  expectedIncomeMonth: document.getElementById("expectedIncomeMonth"),
-  expectedIncomeCategory: document.getElementById("expectedIncomeCategory"),
-  expectedIncomePlanned: document.getElementById("expectedIncomePlanned"),
-  expectedIncomeSubmitButton: document.getElementById("expectedIncomeSubmitButton"),
-  cancelExpectedIncomeEditButton: document.getElementById("cancelExpectedIncomeEditButton"),
   budgetForm: document.getElementById("budgetForm"),
   budgetMonth: document.getElementById("budgetMonth"),
   budgetKind: document.getElementById("budgetKind"),
@@ -157,6 +163,8 @@ const els = {
   logoutButton: document.getElementById("logoutButton"),
   logoutSettingsButton: document.getElementById("logoutSettingsButton"),
   syncStatusValue: document.getElementById("syncStatusValue"),
+  tabOrderList: document.getElementById("tabOrderList"),
+  resetTabOrderButton: document.getElementById("resetTabOrderButton"),
   resetButton: document.getElementById("resetButton"),
   editModal: document.getElementById("editModal"),
   editModalTitle: document.getElementById("editModalTitle"),
@@ -215,6 +223,87 @@ function setReady(ready) {
   document.querySelectorAll(".tab-page").forEach(function (page) {
     page.style.display = ready ? "" : "none";
   });
+}
+
+function defaultTabOrder() {
+  return DEFAULT_TABS.map(function (tab) { return tab.id; });
+}
+
+function tabLabel(id) {
+  const tab = DEFAULT_TABS.find(function (item) { return item.id === id; });
+  return tab ? tab.label : displayText(id);
+}
+
+function getTabOrder() {
+  let saved = [];
+  try {
+    saved = JSON.parse(window.localStorage.getItem(TAB_ORDER_STORAGE_KEY) || "[]");
+  } catch (_error) {
+    saved = [];
+  }
+  const validIds = defaultTabOrder();
+  const clean = saved.filter(function (id, index) {
+    return validIds.indexOf(id) !== -1 && saved.indexOf(id) === index;
+  });
+  validIds.forEach(function (id) {
+    if (clean.indexOf(id) === -1) {
+      clean.push(id);
+    }
+  });
+  return clean;
+}
+
+function saveTabOrder(order) {
+  window.localStorage.setItem(TAB_ORDER_STORAGE_KEY, JSON.stringify(order));
+}
+
+function applyTabOrder() {
+  const order = getTabOrder();
+  order.forEach(function (id) {
+    const button = els.tabs.querySelector("button[data-tab='" + id + "']");
+    if (button) {
+      els.tabs.appendChild(button);
+    }
+  });
+}
+
+function renderTabOrderSettings() {
+  clearNode(els.tabOrderList);
+  const order = getTabOrder();
+  order.forEach(function (id, index) {
+    addRow(
+      els.tabOrderList,
+      tabLabel(id),
+      "",
+      "Position " + (index + 1),
+      "",
+      [
+        { label: "Up", action: "move-tab-up", id: id },
+        { label: "Down", action: "move-tab-down", id: id },
+      ],
+    );
+  });
+}
+
+function moveTab(id, direction) {
+  const order = getTabOrder();
+  const index = order.indexOf(id);
+  const nextIndex = index + direction;
+  if (index === -1 || nextIndex < 0 || nextIndex >= order.length) {
+    return;
+  }
+  const temp = order[index];
+  order[index] = order[nextIndex];
+  order[nextIndex] = temp;
+  saveTabOrder(order);
+  applyTabOrder();
+  renderTabOrderSettings();
+}
+
+function resetTabOrder() {
+  saveTabOrder(defaultTabOrder());
+  applyTabOrder();
+  renderTabOrderSettings();
 }
 
 function activateTab(name) {
@@ -282,9 +371,6 @@ function closeEditModal(returnOnly) {
     }
     if (state.editingDebtId) {
       clearDebtEditMode();
-    }
-    if (state.editingExpectedIncomeId) {
-      clearExpectedIncomeEditMode();
     }
     if (state.editingBudgetId) {
       clearBudgetEditMode();
@@ -983,7 +1069,6 @@ function renderAll() {
   els.monthInput.value = state.month;
   els.reportMonthInput.value = state.month;
   els.transactionMonthInput.value = state.month;
-  els.expectedIncomeMonth.value = state.month;
   els.budgetMonth.value = state.month;
   renderSelectors();
   renderDashboard();
@@ -994,6 +1079,7 @@ function renderAll() {
   renderBudgets();
   renderDebts();
   renderReports();
+  renderTabOrderSettings();
 }
 
 function renderSelectors() {
@@ -1062,7 +1148,6 @@ function renderSelectors() {
   els.recDebt.value = oldRecurringDebt || "";
   fillCategorySelect(els.txCategory, categories, els.txType.value, true);
   fillCategorySelect(els.recCategory, categories, els.recType.value, true);
-  fillCategorySelect(els.expectedIncomeCategory, categories, "income", false);
   fillCategorySelect(els.budgetCategory, categories, els.budgetKind.value || "expense", false);
   els.budgetCategory.value = oldBudgetCategory || "";
   const vendors = vendorOptions();
@@ -1085,7 +1170,7 @@ function updateBudgetFormUi() {
   if (isIncome) {
     els.budgetCarry.checked = false;
   }
-  if (state.editingBudgetId || state.editingExpectedIncomeId) {
+  if (state.editingBudgetId) {
     els.budgetSubmitButton.textContent = isIncome ? "Update Expected Income" : "Update Allocation";
   } else {
     els.budgetSubmitButton.textContent = isIncome ? "Save Expected Income" : "Save Allocation";
@@ -2013,9 +2098,6 @@ function clearTransactionEditMode() {
 
 async function deleteById(table, id, message) {
   if (table === "budgets") {
-    if (state.editingExpectedIncomeId === Number(id)) {
-      clearExpectedIncomeEditMode();
-    }
     if (state.editingBudgetId === Number(id)) {
       clearBudgetEditMode();
     }
@@ -2306,56 +2388,8 @@ function clearCategoryEditMode() {
   closeEditModal(true);
 }
 
-async function saveExpectedIncome(event) {
-  event.preventDefault();
-  if (!els.expectedIncomeCategory.value) {
-    showStatus("Choose an income category.", true);
-    return;
-  }
-  const planned = numberValue(els.expectedIncomePlanned);
-  if (planned <= 0) {
-    showStatus("Expected income must be more than zero.", true);
-    return;
-  }
-  const month = els.expectedIncomeMonth.value || state.month;
-  if (state.editingExpectedIncomeId) {
-    run(
-      `UPDATE budgets
-       SET month = ?, category_id = ?, planned = ?, carry_forward = 0, updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`,
-      [month, Number(els.expectedIncomeCategory.value), planned, state.editingExpectedIncomeId],
-    );
-    state.month = month;
-    clearExpectedIncomeEditMode();
-    const summary = zeroBudgetSummary(month);
-    await saveAfterChange("Expected income updated. Left to allocate: " + money(summary.left) + ".");
-    return;
-  }
-  run(
-    `INSERT INTO budgets(month, category_id, planned, carry_forward)
-     VALUES (?, ?, ?, 0)
-     ON CONFLICT(month, category_id)
-     DO UPDATE SET planned = excluded.planned, updated_at = CURRENT_TIMESTAMP`,
-    [month, Number(els.expectedIncomeCategory.value), planned],
-  );
-  state.month = month;
-  els.expectedIncomePlanned.value = "";
-  const summary = zeroBudgetSummary(month);
-  await saveAfterChange("Expected income saved. Left to allocate: " + money(summary.left) + ".");
-}
-
 function editExpectedIncome(id) {
   editBudget(id);
-}
-
-function clearExpectedIncomeEditMode() {
-  state.editingExpectedIncomeId = null;
-  els.expectedIncomeForm.reset();
-  els.expectedIncomeMonth.value = state.month;
-  renderSelectors();
-  els.expectedIncomeSubmitButton.textContent = "Save Expected Income";
-  els.cancelExpectedIncomeEditButton.classList.add("hidden");
-  closeEditModal(true);
 }
 
 async function saveBudget(event) {
@@ -2421,7 +2455,6 @@ function editBudget(id) {
     return;
   }
   state.editingBudgetId = Number(id);
-  state.editingExpectedIncomeId = budget.kind === "income" ? Number(id) : null;
   els.budgetMonth.value = budget.month || state.month;
   els.budgetKind.value = budget.kind || "expense";
   renderSelectors();
@@ -2438,7 +2471,6 @@ function editBudget(id) {
 
 function clearBudgetEditMode() {
   state.editingBudgetId = null;
-  state.editingExpectedIncomeId = null;
   els.budgetForm.reset();
   els.budgetMonth.value = state.month;
   els.budgetKind.value = "expense";
@@ -2683,6 +2715,7 @@ function bindEvents() {
   els.logoutSettingsButton.addEventListener("click", function () {
     signOut().catch(function (error) { showStatus(error.message, true); });
   });
+  els.resetTabOrderButton.addEventListener("click", resetTabOrder);
   els.editModal.addEventListener("click", function (event) {
     if (event.target === els.editModal) {
       closeEditModal(false);
@@ -2794,10 +2827,6 @@ function bindEvents() {
     saveCategory(event).catch(function (error) { showStatus(error.message, true); });
   });
   els.cancelCategoryEditButton.addEventListener("click", clearCategoryEditMode);
-  els.expectedIncomeForm.addEventListener("submit", function (event) {
-    saveExpectedIncome(event).catch(function (error) { showStatus(error.message, true); });
-  });
-  els.cancelExpectedIncomeEditButton.addEventListener("click", clearExpectedIncomeEditMode);
   els.budgetForm.addEventListener("submit", function (event) {
     saveBudget(event).catch(function (error) { showStatus(error.message, true); });
   });
@@ -2852,12 +2881,18 @@ function bindEvents() {
       editDebt(id);
     } else if (action === "delete-debt" && confirm("Delete this debt?")) {
       deleteDebt(id).catch(function (error) { showStatus(error.message, true); });
+    } else if (action === "move-tab-up") {
+      moveTab(id, -1);
+    } else if (action === "move-tab-down") {
+      moveTab(id, 1);
     }
   });
 }
 
 async function init() {
   createSupabaseClient();
+  applyTabOrder();
+  renderTabOrderSettings();
   bindEvents();
   els.txDate.value = today();
   els.recNextDate.value = today();

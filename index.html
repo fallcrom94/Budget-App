@@ -20,6 +20,7 @@
       <section id="setupView" class="panel">
         <h2>Budget Login</h2>
         <p class="muted">Create an account or log in to open your private synced budget.</p>
+        <p class="muted">For support email joseph.spratt94@gmail.com.</p>
         <form id="authForm" class="form-grid">
           <label>Email<input id="emailInput" type="email" autocomplete="email" required></label>
           <label>Password<input id="passwordInput" type="password" autocomplete="current-password" required></label>
@@ -180,13 +181,6 @@
             <article class="stat"><span>Left To Allocate</span><strong id="budgetLeftValue">$0.00</strong></article>
             <article class="stat"><span>Status</span><strong id="budgetStatusValue">Needs Plan</strong></article>
           </div>
-          <form id="expectedIncomeForm" class="form-grid hidden">
-            <label>Month<input id="expectedIncomeMonth" type="month" required></label>
-            <label>Income Category<select id="expectedIncomeCategory" required></select></label>
-            <label>Expected Income<input id="expectedIncomePlanned" inputmode="decimal" placeholder="0.00" required></label>
-            <button id="expectedIncomeSubmitButton" class="primary" type="submit">Save Expected Income</button>
-            <button id="cancelExpectedIncomeEditButton" class="secondary hidden" type="button">Cancel Edit</button>
-          </form>
           <form id="budgetForm" class="form-grid">
             <label>Month<input id="budgetMonth" type="month" required></label>
             <label>Type<select id="budgetKind"><option value="expense">Expense</option><option value="income">Income</option></select></label>
@@ -232,6 +226,10 @@
         <section class="panel">
           <h2>Settings</h2>
           <p id="syncStatusValue" class="muted">Sync Status: Not signed in.</p>
+          <p class="muted">For support email joseph.spratt94@gmail.com.</p>
+          <h3 class="inline-section-title">Tab Order</h3>
+          <div id="tabOrderList" class="list"></div>
+          <button id="resetTabOrderButton" class="secondary" type="button">Reset Tab Order</button>
           <button id="saveDbButton" class="primary" type="button">Sync</button>
           <button id="logoutSettingsButton" class="secondary" type="button">Log Out</button>
           <button id="resetButton" class="secondary" type="button">Clear Local App State</button>

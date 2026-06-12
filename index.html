@@ -74,15 +74,17 @@
       </section>
 
       <section id="dashboardTab" class="tab-page">
-        <div class="month-row">
-          <label>Month<input id="monthInput" type="month"></label>
-        </div>
-        <div class="stats-grid">
-          <article class="stat"><span>Monthly Income</span><strong id="incomeValue">$0.00</strong></article>
-          <article class="stat"><span>Monthly Spending</span><strong id="spendingValue">$0.00</strong></article>
-          <article class="stat"><span>Savings</span><strong id="savingsValue">$0.00</strong></article>
-          <article class="stat"><span>Budget Remaining</span><strong id="budgetValue">$0.00</strong></article>
-        </div>
+        <section class="panel dashboard-overview">
+          <div class="month-row">
+            <label>Month<input id="monthInput" type="month"></label>
+          </div>
+          <div class="stats-grid">
+            <article class="stat"><span>Monthly Income</span><strong id="incomeValue">$0.00</strong></article>
+            <article class="stat"><span>Monthly Spending</span><strong id="spendingValue">$0.00</strong></article>
+            <article class="stat"><span>Savings</span><strong id="savingsValue">$0.00</strong></article>
+            <article class="stat"><span>Budget Remaining</span><strong id="budgetValue">$0.00</strong></article>
+          </div>
+        </section>
         <section class="panel"><h2>Account Balances</h2><div id="accountBalanceList" class="list"></div></section>
         <section class="panel"><h2>Category Spending</h2><div id="categorySpendList" class="list"></div></section>
         <section class="panel"><h2>Net Worth</h2><p id="netWorthValue" class="big-number">$0.00</p></section>

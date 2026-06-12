@@ -420,6 +420,10 @@ textarea:focus {
   margin-top: 4px;
 }
 
+.dashboard-overview .stats-grid {
+  margin-bottom: 0;
+}
+
 .stat {
   min-height: 94px;
   padding: 13px;

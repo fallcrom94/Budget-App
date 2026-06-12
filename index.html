@@ -71,27 +71,17 @@
           <h2>Quick Transaction</h2>
           <form id="transactionForm" class="transaction-form">
             <label class="amount-field">Amount<input id="txAmount" inputmode="decimal" placeholder="0.00" required></label>
-            <label>Type<select id="txType"><option value="expense">Expense</option><option value="income">Income</option></select></label>
+            <label>Type<select id="txType"><option value="expense">Expense</option><option value="income">Income</option><option value="transfer">Transfer</option></select></label>
             <label>Date<input id="txDate" type="date" required></label>
-            <label>Account<select id="txAccount" required></select></label>
-            <label>Category<select id="txCategory"></select></label>
-            <label>Linked Debt<select id="txDebt"></select></label>
-            <label class="vendor-field">Vendor<input id="txVendor" list="vendorList" autocomplete="off" placeholder="Vendor"><div id="txVendorSuggestions" class="suggestions hidden"></div></label>
+            <label id="txAccountField"><span id="txAccountLabel">Account</span><select id="txAccount" required></select></label>
+            <label id="txTransferToField" class="hidden">To Account<select id="txTransferTo"></select></label>
+            <label id="txCategoryField">Category<select id="txCategory"></select></label>
+            <label id="txDebtField">Linked Debt<select id="txDebt"></select></label>
+            <label id="txVendorField" class="vendor-field">Vendor<input id="txVendor" list="vendorList" autocomplete="off" placeholder="Vendor"><div id="txVendorSuggestions" class="suggestions hidden"></div></label>
             <datalist id="vendorList"></datalist>
             <label class="wide">Notes<textarea id="txNotes" rows="2" placeholder="Notes"></textarea></label>
             <button class="primary" type="submit">Save Transaction</button>
             <button id="cancelTransactionEditButton" class="secondary hidden" type="button">Cancel Edit</button>
-          </form>
-        </section>
-        <section class="panel">
-          <h2>Transfer or Card Payment</h2>
-          <form id="transferForm" class="form-grid">
-            <label>Amount<input id="transferAmount" inputmode="decimal" placeholder="0.00" required></label>
-            <label>Date<input id="transferDate" type="date" required></label>
-            <label>From Account<select id="transferFromAccount" required></select></label>
-            <label>To Account<select id="transferToAccount" required></select></label>
-            <label class="wide">Notes<textarea id="transferNotes" rows="2" placeholder="Notes"></textarea></label>
-            <button class="primary" type="submit">Save Transfer</button>
           </form>
         </section>
       </section>

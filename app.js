@@ -17,6 +17,7 @@ const state = {
   editModal: null,
   month: currentMonth(),
   editingTransactionId: null,
+  editingTransferBaseId: null,
   editingAccountId: null,
   editingCategoryId: null,
   editingDebtId: null,
@@ -64,20 +65,21 @@ const els = {
   txAmount: document.getElementById("txAmount"),
   txType: document.getElementById("txType"),
   txDate: document.getElementById("txDate"),
+  txAccountField: document.getElementById("txAccountField"),
+  txAccountLabel: document.getElementById("txAccountLabel"),
   txAccount: document.getElementById("txAccount"),
+  txTransferToField: document.getElementById("txTransferToField"),
+  txTransferTo: document.getElementById("txTransferTo"),
+  txCategoryField: document.getElementById("txCategoryField"),
   txCategory: document.getElementById("txCategory"),
+  txDebtField: document.getElementById("txDebtField"),
   txDebt: document.getElementById("txDebt"),
+  txVendorField: document.getElementById("txVendorField"),
   txVendor: document.getElementById("txVendor"),
   txVendorSuggestions: document.getElementById("txVendorSuggestions"),
   txNotes: document.getElementById("txNotes"),
   cancelTransactionEditButton: document.getElementById("cancelTransactionEditButton"),
   vendorList: document.getElementById("vendorList"),
-  transferForm: document.getElementById("transferForm"),
-  transferAmount: document.getElementById("transferAmount"),
-  transferDate: document.getElementById("transferDate"),
-  transferFromAccount: document.getElementById("transferFromAccount"),
-  transferToAccount: document.getElementById("transferToAccount"),
-  transferNotes: document.getElementById("transferNotes"),
   transactionSearch: document.getElementById("transactionSearch"),
   transactionList: document.getElementById("transactionList"),
   exportCsvButton: document.getElementById("exportCsvButton"),
@@ -966,15 +968,13 @@ function renderSelectors() {
   const categories = all("SELECT * FROM categories ORDER BY kind, name");
   const debts = all("SELECT * FROM debts ORDER BY name");
   const oldAccount = els.txAccount.value;
-  const oldTransferFrom = els.transferFromAccount.value;
-  const oldTransferTo = els.transferToAccount.value;
+  const oldTransferTo = els.txTransferTo.value;
   const oldDebtAccount = els.debtAccount.value;
   const oldTransactionDebt = els.txDebt.value;
   const oldRecurringAccount = els.recAccount.value;
   const oldRecurringDebt = els.recDebt.value;
   clearNode(els.txAccount);
-  clearNode(els.transferFromAccount);
-  clearNode(els.transferToAccount);
+  clearNode(els.txTransferTo);
   clearNode(els.recAccount);
   clearNode(els.debtAccount);
   clearNode(els.txDebt);
@@ -997,14 +997,10 @@ function renderSelectors() {
     option.value = account.id;
     option.textContent = label;
     els.txAccount.appendChild(option);
-    const transferFromOption = document.createElement("option");
-    transferFromOption.value = account.id;
-    transferFromOption.textContent = label;
-    els.transferFromAccount.appendChild(transferFromOption);
     const transferToOption = document.createElement("option");
     transferToOption.value = account.id;
     transferToOption.textContent = label;
-    els.transferToAccount.appendChild(transferToOption);
+    els.txTransferTo.appendChild(transferToOption);
     const recurringOption = document.createElement("option");
     recurringOption.value = account.id;
     recurringOption.textContent = label;
@@ -1015,8 +1011,7 @@ function renderSelectors() {
     els.debtAccount.appendChild(debtOption);
   });
   els.txAccount.value = oldAccount || (accounts[0] ? String(accounts[0].id) : "");
-  els.transferFromAccount.value = oldTransferFrom || (accounts[0] ? String(accounts[0].id) : "");
-  els.transferToAccount.value = oldTransferTo || (accounts[1] ? String(accounts[1].id) : (accounts[0] ? String(accounts[0].id) : ""));
+  els.txTransferTo.value = oldTransferTo || (accounts[1] ? String(accounts[1].id) : (accounts[0] ? String(accounts[0].id) : ""));
   els.recAccount.value = oldRecurringAccount || (accounts[0] ? String(accounts[0].id) : "");
   els.debtAccount.value = oldDebtAccount || "";
   debts.forEach(function (debt) {
@@ -1042,6 +1037,33 @@ function renderSelectors() {
     option.value = row;
     els.vendorList.appendChild(option);
   });
+  updateTransactionTypeUi();
+}
+
+function updateTransactionTypeUi() {
+  const isTransfer = els.txType.value === "transfer";
+  els.txAccountLabel.textContent = isTransfer ? "From Account" : "Account";
+  els.txTransferToField.classList.toggle("hidden", !isTransfer);
+  els.txCategoryField.classList.toggle("hidden", isTransfer);
+  els.txDebtField.classList.toggle("hidden", isTransfer);
+  els.txVendorField.classList.toggle("hidden", isTransfer);
+  els.txTransferTo.disabled = !isTransfer;
+  els.txTransferTo.required = isTransfer;
+  els.txCategory.disabled = isTransfer;
+  els.txDebt.disabled = isTransfer;
+  els.txVendor.disabled = isTransfer;
+  if (isTransfer) {
+    els.txDebt.value = "";
+    els.txCategory.value = "";
+    els.txVendor.value = "";
+  }
+  if (state.editingTransferBaseId) {
+    els.transactionSubmit.textContent = isTransfer ? "Update Transfer" : "Update Transaction";
+  } else if (state.editingTransactionId) {
+    els.transactionSubmit.textContent = "Update Transaction";
+  } else {
+    els.transactionSubmit.textContent = isTransfer ? "Save Transfer" : "Save Transaction";
+  }
 }
 
 function vendorOptions() {
@@ -1712,6 +1734,10 @@ async function saveTransaction(event) {
     showStatus("Open the database first.", true);
     return;
   }
+  if (els.txType.value === "transfer") {
+    await saveTransferFromTransaction();
+    return;
+  }
   const accountId = Number(els.txAccount.value || 0);
   const debtId = els.txDebt.value ? Number(els.txDebt.value) : null;
   const categoryId = els.txCategory.value ? Number(els.txCategory.value) : (debtId ? debtCategoryId() : null);
@@ -1725,6 +1751,13 @@ async function saveTransaction(event) {
     return;
   }
   const wasEditing = Boolean(state.editingTransactionId);
+  if (state.editingTransferBaseId) {
+    run(
+      "DELETE FROM transactions WHERE source = 'transfer' AND (external_id = ? OR external_id = ?)",
+      [state.editingTransferBaseId + "-out", state.editingTransferBaseId + "-in"],
+    );
+    state.editingTransferBaseId = null;
+  }
   if (wasEditing) {
     const oldTx = one("SELECT * FROM transactions WHERE id = ?", [state.editingTransactionId]);
     applyDebtImpact(oldTx, true);
@@ -1768,22 +1801,45 @@ async function saveTransaction(event) {
   els.txAccount.value = keepAccount;
   els.txCategory.value = keepCategory;
   els.txDebt.value = keepDebt;
+  updateTransactionTypeUi();
   await saveAfterChange("Transaction saved.");
   els.txAmount.focus();
 }
 
-async function saveTransfer(event) {
-  event.preventDefault();
-  const fromAccount = Number(els.transferFromAccount.value || 0);
-  const toAccount = Number(els.transferToAccount.value || 0);
-  const amount = Math.abs(numberValue(els.transferAmount));
+async function saveTransferFromTransaction() {
+  const fromAccount = Number(els.txAccount.value || 0);
+  const toAccount = Number(els.txTransferTo.value || 0);
+  const amount = Math.abs(numberValue(els.txAmount));
   if (!fromAccount || !toAccount || fromAccount === toAccount || amount <= 0) {
     showStatus("Choose two different accounts and enter an amount.", true);
     return;
   }
-  const transferId = "transfer-" + Date.now() + "-" + Math.random().toString(16).slice(2);
-  const date = els.transferDate.value || today();
-  const notes = els.transferNotes.value.trim();
+  if (state.editingTransactionId) {
+    const oldTx = one("SELECT * FROM transactions WHERE id = ?", [state.editingTransactionId]);
+    applyDebtImpact(oldTx, true);
+    run("DELETE FROM transactions WHERE id = ?", [state.editingTransactionId]);
+    state.editingTransactionId = null;
+  }
+  const transferId = state.editingTransferBaseId || ("transfer-" + Date.now() + "-" + Math.random().toString(16).slice(2));
+  const date = els.txDate.value || today();
+  const notes = els.txNotes.value.trim();
+  if (state.editingTransferBaseId) {
+    run(
+      `UPDATE transactions
+       SET account_id = ?, date = ?, amount = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE source = 'transfer' AND external_id = ?`,
+      [fromAccount, date, amount, notes, transferId + "-out"],
+    );
+    run(
+      `UPDATE transactions
+       SET account_id = ?, date = ?, amount = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE source = 'transfer' AND external_id = ?`,
+      [toAccount, date, amount, notes, transferId + "-in"],
+    );
+    clearTransactionEditMode();
+    await saveAfterChange("Transfer updated.");
+    return;
+  }
   run(
     `INSERT INTO transactions(account_id, category_id, debt_id, date, type, amount, vendor, notes, source, external_id)
      VALUES (?, NULL, NULL, ?, 'expense', ?, 'Transfer', ?, 'transfer', ?)`,
@@ -1794,14 +1850,18 @@ async function saveTransfer(event) {
      VALUES (?, NULL, NULL, ?, 'income', ?, 'Transfer', ?, 'transfer', ?)`,
     [toAccount, date, amount, notes, transferId + "-in"],
   );
-  const keepFrom = els.transferFromAccount.value;
-  const keepTo = els.transferToAccount.value;
-  els.transferForm.reset();
-  els.transferDate.value = today();
+  const keepDate = els.txDate.value;
+  const keepFrom = els.txAccount.value;
+  const keepTo = els.txTransferTo.value;
+  els.transactionForm.reset();
+  els.txDate.value = keepDate || today();
+  els.txType.value = "transfer";
   renderSelectors();
-  els.transferFromAccount.value = keepFrom;
-  els.transferToAccount.value = keepTo;
+  els.txAccount.value = keepFrom;
+  els.txTransferTo.value = keepTo;
+  updateTransactionTypeUi();
   await saveAfterChange("Transfer saved.");
+  els.txAmount.focus();
 }
 
 function editTransaction(id) {
@@ -1809,7 +1869,12 @@ function editTransaction(id) {
   if (!tx) {
     return;
   }
+  if (tx.source === "transfer" && tx.external_id) {
+    editTransfer(tx);
+    return;
+  }
   state.editingTransactionId = Number(id);
+  state.editingTransferBaseId = null;
   els.txAmount.value = tx.amount;
   els.txType.value = tx.type;
   els.txDate.value = tx.date;
@@ -1819,7 +1884,7 @@ function editTransaction(id) {
   els.txDebt.value = tx.debt_id || "";
   els.txVendor.value = tx.vendor || "";
   els.txNotes.value = tx.notes || "";
-  els.transactionSubmit.textContent = "Update Transaction";
+  updateTransactionTypeUi();
   els.cancelTransactionEditButton.classList.remove("hidden");
   openEditModal("Edit Transaction", els.transactionForm);
   window.setTimeout(function () {
@@ -1827,13 +1892,39 @@ function editTransaction(id) {
   }, 50);
 }
 
+function editTransfer(tx) {
+  const baseId = String(tx.external_id).replace(/-(out|in)$/, "");
+  const outTx = one("SELECT * FROM transactions WHERE source = 'transfer' AND external_id = ?", [baseId + "-out"]);
+  const inTx = one("SELECT * FROM transactions WHERE source = 'transfer' AND external_id = ?", [baseId + "-in"]);
+  if (!outTx || !inTx) {
+    showStatus("This transfer is missing one side and cannot be edited.", true);
+    return;
+  }
+  state.editingTransactionId = null;
+  state.editingTransferBaseId = baseId;
+  els.txAmount.value = outTx.amount;
+  els.txType.value = "transfer";
+  els.txDate.value = outTx.date;
+  renderSelectors();
+  els.txAccount.value = outTx.account_id;
+  els.txTransferTo.value = inTx.account_id;
+  els.txNotes.value = outTx.notes || inTx.notes || "";
+  updateTransactionTypeUi();
+  els.cancelTransactionEditButton.classList.remove("hidden");
+  openEditModal("Edit Transfer", els.transactionForm);
+  window.setTimeout(function () {
+    els.txAmount.focus();
+  }, 50);
+}
+
 function clearTransactionEditMode() {
   state.editingTransactionId = null;
+  state.editingTransferBaseId = null;
   els.transactionForm.reset();
   els.txDate.value = today();
   els.txType.value = "expense";
   renderSelectors();
-  els.transactionSubmit.textContent = "Save Transaction";
+  updateTransactionTypeUi();
   els.cancelTransactionEditButton.classList.add("hidden");
   closeEditModal(true);
 }
@@ -2528,6 +2619,7 @@ function bindEvents() {
       els.txDebt.value = "";
     }
     renderSelectors();
+    updateTransactionTypeUi();
   });
   els.txDebt.addEventListener("change", function () {
     if (els.txDebt.value) {
@@ -2570,9 +2662,6 @@ function bindEvents() {
   });
   els.transactionForm.addEventListener("submit", function (event) {
     saveTransaction(event).catch(function (error) { showStatus(error.message, true); });
-  });
-  els.transferForm.addEventListener("submit", function (event) {
-    saveTransfer(event).catch(function (error) { showStatus(error.message, true); });
   });
   els.cancelTransactionEditButton.addEventListener("click", clearTransactionEditMode);
   els.recurringForm.addEventListener("submit", function (event) {
@@ -2656,7 +2745,6 @@ async function init() {
   createSupabaseClient();
   bindEvents();
   els.txDate.value = today();
-  els.transferDate.value = today();
   els.recNextDate.value = today();
   els.monthInput.value = state.month;
   els.reportMonthInput.value = state.month;

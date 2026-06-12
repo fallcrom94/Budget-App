@@ -130,7 +130,6 @@ const els = {
   cancelCategoryEditButton: document.getElementById("cancelCategoryEditButton"),
   categoriesList: document.getElementById("categoriesList"),
   budgetForm: document.getElementById("budgetForm"),
-  budgetMonth: document.getElementById("budgetMonth"),
   budgetKind: document.getElementById("budgetKind"),
   budgetCategoryLabel: document.getElementById("budgetCategoryLabel"),
   budgetCategory: document.getElementById("budgetCategory"),
@@ -1069,7 +1068,6 @@ function renderAll() {
   els.monthInput.value = state.month;
   els.reportMonthInput.value = state.month;
   els.transactionMonthInput.value = state.month;
-  els.budgetMonth.value = state.month;
   renderSelectors();
   renderDashboard();
   renderTransactions();
@@ -2398,7 +2396,7 @@ async function saveBudget(event) {
     showStatus("Choose a category.", true);
     return;
   }
-  const month = els.budgetMonth.value || state.month;
+  const month = state.month;
   const category = one("SELECT kind FROM categories WHERE id = ?", [Number(els.budgetCategory.value)]);
   const kind = category ? category.kind : (els.budgetKind.value || "expense");
   const planned = numberValue(els.budgetPlanned);
@@ -2455,7 +2453,7 @@ function editBudget(id) {
     return;
   }
   state.editingBudgetId = Number(id);
-  els.budgetMonth.value = budget.month || state.month;
+  state.month = budget.month || state.month;
   els.budgetKind.value = budget.kind || "expense";
   renderSelectors();
   els.budgetCategory.value = budget.category_id || "";
@@ -2472,7 +2470,6 @@ function editBudget(id) {
 function clearBudgetEditMode() {
   state.editingBudgetId = null;
   els.budgetForm.reset();
-  els.budgetMonth.value = state.month;
   els.budgetKind.value = "expense";
   els.budgetCarry.checked = false;
   renderSelectors();
@@ -2485,7 +2482,7 @@ async function resetBudgetFromDefaults() {
   if (!confirm("Reset this month from category default budgets? Existing expected income and planned amounts for those categories will be replaced.")) {
     return;
   }
-  const month = els.budgetMonth.value || state.month;
+  const month = state.month;
   const rows = all("SELECT id, monthly_limit FROM categories WHERE monthly_limit > 0");
   rows.forEach(function (category) {
     run(
@@ -2899,7 +2896,6 @@ async function init() {
   els.monthInput.value = state.month;
   els.reportMonthInput.value = state.month;
   els.transactionMonthInput.value = state.month;
-  els.budgetMonth.value = state.month;
   setReady(false);
   await refreshSession();
   state.supabase.auth.onAuthStateChange(function (_event, session) {

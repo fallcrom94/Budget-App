@@ -89,9 +89,9 @@ The app saves with Storage `upsert`, so it needs `select`, `insert`, and `update
 2. Sign up or log in with email and password.
 3. Tap `Open Budget`.
 4. Add accounts, categories, transactions, budgets, and debts.
-5. Use `Save Budget` to write the current `budget.sqlite3` file to Supabase Storage.
+5. Use `Sync` to write the current `budget.sqlite3` file to Supabase Storage.
 
-Most changes save immediately after the action completes. Before a database is open, the signed-in panel has `Open Budget`. After the database is open, the Settings tab has manual `Save Budget` and `Log Out` controls.
+Most changes save immediately after the action completes. Before a database is open, the signed-in panel has `Open Budget`. After the database is open, the top bar and Settings tab have manual `Sync` controls.
 
 ## Multi-Device Sync
 

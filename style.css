@@ -64,8 +64,9 @@ h2 {
 }
 
 .status {
-  display: none;
+  visibility: hidden;
   margin-bottom: 12px;
+  min-height: 43px;
   padding: 11px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -76,7 +77,7 @@ h2 {
 }
 
 .status.show {
-  display: block;
+  visibility: visible;
 }
 
 .status.error {
@@ -222,6 +223,43 @@ h2 {
 
 .hidden {
   display: none;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: start center;
+  padding: max(16px, env(safe-area-inset-top)) 14px max(24px, env(safe-area-inset-bottom));
+  background: rgba(23, 32, 51, 0.42);
+  overflow-y: auto;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-panel {
+  width: min(100%, 640px);
+  margin-top: 28px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 14px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.modal-head h2 {
+  margin-bottom: 0;
 }
 
 .form-grid,

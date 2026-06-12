@@ -12,7 +12,7 @@
         <div>
           <h1>Christendom Budgeting</h1>
         </div>
-        <button id="syncButton" class="icon-button" type="button">Save Budget</button>
+        <button id="syncButton" class="icon-button" type="button">Sync</button>
       </header>
 
       <section id="status" class="status" aria-live="polite"></section>
@@ -212,10 +212,20 @@
         <section class="panel">
           <h2>Settings</h2>
           <p id="syncStatusValue" class="muted">Sync Status: Not signed in.</p>
-          <button id="saveDbButton" class="primary" type="button">Save Budget</button>
+          <button id="saveDbButton" class="primary" type="button">Sync</button>
           <button id="logoutSettingsButton" class="secondary" type="button">Log Out</button>
           <button id="resetButton" class="secondary" type="button">Clear Local App State</button>
         </section>
+      </section>
+
+      <section id="editModal" class="modal hidden" aria-modal="true" role="dialog" aria-labelledby="editModalTitle">
+        <div class="modal-panel">
+          <div class="modal-head">
+            <h2 id="editModalTitle">Edit</h2>
+            <button id="closeEditModalButton" class="secondary small" type="button">Close</button>
+          </div>
+          <div id="editModalBody"></div>
+        </div>
       </section>
     </main>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

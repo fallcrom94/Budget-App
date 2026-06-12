@@ -14,6 +14,7 @@ const state = {
   checkingRemote: false,
   autoSyncTimer: null,
   syncMessage: "",
+  editModal: null,
   month: currentMonth(),
   editingTransactionId: null,
   editingAccountId: null,
@@ -134,6 +135,10 @@ const els = {
   logoutSettingsButton: document.getElementById("logoutSettingsButton"),
   syncStatusValue: document.getElementById("syncStatusValue"),
   resetButton: document.getElementById("resetButton"),
+  editModal: document.getElementById("editModal"),
+  editModalTitle: document.getElementById("editModalTitle"),
+  editModalBody: document.getElementById("editModalBody"),
+  closeEditModalButton: document.getElementById("closeEditModalButton"),
 };
 
 function currentMonth() {
@@ -201,6 +206,57 @@ function activateTab(name) {
     window.setTimeout(function () {
       els.txAmount.focus();
     }, 50);
+  }
+}
+
+function openEditModal(title, form) {
+  closeEditModal(true);
+  const placeholder = document.createComment("edit-form-placeholder");
+  const parent = form.parentNode;
+  const next = form.nextSibling;
+  parent.insertBefore(placeholder, form);
+  state.editModal = {
+    form: form,
+    parent: parent,
+    next: next,
+    placeholder: placeholder,
+  };
+  els.editModalTitle.textContent = title;
+  els.editModalBody.appendChild(form);
+  els.editModal.classList.remove("hidden");
+}
+
+function closeEditModal(returnOnly) {
+  if (state.editModal) {
+    const modal = state.editModal;
+    if (modal.next && modal.next.parentNode === modal.parent) {
+      modal.parent.insertBefore(modal.form, modal.next);
+    } else {
+      modal.parent.appendChild(modal.form);
+    }
+    if (modal.placeholder.parentNode) {
+      modal.placeholder.parentNode.removeChild(modal.placeholder);
+    }
+    state.editModal = null;
+  }
+  els.editModal.classList.add("hidden");
+  clearNode(els.editModalBody);
+  if (!returnOnly) {
+    if (state.editingTransactionId) {
+      clearTransactionEditMode();
+    }
+    if (state.editingRecurringId) {
+      clearRecurringEditMode();
+    }
+    if (state.editingAccountId) {
+      clearAccountEditMode();
+    }
+    if (state.editingCategoryId) {
+      clearCategoryEditMode();
+    }
+    if (state.editingDebtId) {
+      clearDebtEditMode();
+    }
   }
 }
 
@@ -337,6 +393,7 @@ async function signUp() {
 }
 
 async function signOut() {
+  closeEditModal(false);
   if (state.supabase) {
     const result = await state.supabase.auth.signOut();
     if (result.error) {
@@ -760,7 +817,7 @@ async function checkForRemoteUpdates(autoReload) {
       updateAuthUi();
       return;
     }
-    if (autoReload && !state.dirty) {
+    if (autoReload && !state.dirty && !state.editModal) {
       showStatus("Remote changes found. Refreshing budget...");
       state.checkingRemote = false;
       await openDatabase();
@@ -1569,7 +1626,8 @@ async function saveTransaction(event) {
     showStatus("Linked debt transactions must be expenses.", true);
     return;
   }
-  if (state.editingTransactionId) {
+  const wasEditing = Boolean(state.editingTransactionId);
+  if (wasEditing) {
     const oldTx = one("SELECT * FROM transactions WHERE id = ?", [state.editingTransactionId]);
     applyDebtImpact(oldTx, true);
     run(
@@ -1579,8 +1637,9 @@ async function saveTransaction(event) {
       [accountId, categoryId, debtId, els.txDate.value || today(), els.txType.value, amount, els.txVendor.value.trim(), els.txNotes.value.trim(), state.editingTransactionId],
     );
     applyDebtImpact({ debt_id: debtId, type: els.txType.value, amount: amount }, false);
-    state.editingTransactionId = null;
-    els.transactionSubmit.textContent = "Save Transaction";
+    clearTransactionEditMode();
+    await saveAfterChange("Transaction updated.");
+    return;
   } else {
     run(
       `INSERT INTO transactions(account_id, category_id, debt_id, date, type, amount, vendor, notes, source, external_id)
@@ -1631,7 +1690,20 @@ function editTransaction(id) {
   els.txVendor.value = tx.vendor || "";
   els.txNotes.value = tx.notes || "";
   els.transactionSubmit.textContent = "Update Transaction";
-  activateTab("add");
+  openEditModal("Edit Transaction", els.transactionForm);
+  window.setTimeout(function () {
+    els.txAmount.focus();
+  }, 50);
+}
+
+function clearTransactionEditMode() {
+  state.editingTransactionId = null;
+  els.transactionForm.reset();
+  els.txDate.value = today();
+  els.txType.value = "expense";
+  renderSelectors();
+  els.transactionSubmit.textContent = "Save Transaction";
+  closeEditModal(true);
 }
 
 async function deleteById(table, id, message) {
@@ -1714,7 +1786,7 @@ function editRecurring(id) {
   els.recActive.checked = Number(rule.active || 0) === 1;
   els.recurringSubmitButton.textContent = "Update Recurring";
   els.cancelRecurringEditButton.classList.remove("hidden");
-  activateTab("recurring");
+  openEditModal("Edit Recurring Transaction", els.recurringForm);
   window.setTimeout(function () {
     els.recAmount.focus();
   }, 50);
@@ -1728,6 +1800,7 @@ function clearRecurringEditMode() {
   els.recActive.checked = true;
   els.recurringSubmitButton.textContent = "Add Recurring";
   els.cancelRecurringEditButton.classList.add("hidden");
+  closeEditModal(true);
 }
 
 async function deleteRecurring(id) {
@@ -1807,7 +1880,7 @@ function editAccount(id) {
   els.accountNetWorth.checked = Number(account.include_in_net_worth || 0) === 1;
   els.accountSubmitButton.textContent = "Update Account";
   els.cancelAccountEditButton.classList.remove("hidden");
-  activateTab("accounts");
+  openEditModal("Edit Account", els.accountForm);
   window.setTimeout(function () {
     els.accountName.focus();
   }, 50);
@@ -1819,6 +1892,7 @@ function clearAccountEditMode() {
   els.accountNetWorth.checked = true;
   els.accountSubmitButton.textContent = "Add Account";
   els.cancelAccountEditButton.classList.add("hidden");
+  closeEditModal(true);
 }
 
 async function saveCategory(event) {
@@ -1858,7 +1932,7 @@ function editCategory(id) {
   els.categoryLimit.value = category.monthly_limit || "";
   els.categorySubmitButton.textContent = "Update Category";
   els.cancelCategoryEditButton.classList.remove("hidden");
-  activateTab("categories");
+  openEditModal("Edit Category", els.categoryForm);
   window.setTimeout(function () {
     els.categoryName.focus();
   }, 50);
@@ -1870,6 +1944,7 @@ function clearCategoryEditMode() {
   els.categoryKind.value = "expense";
   els.categorySubmitButton.textContent = "Add Category";
   els.cancelCategoryEditButton.classList.add("hidden");
+  closeEditModal(true);
 }
 
 async function saveExpectedIncome(event) {
@@ -1993,7 +2068,7 @@ function editDebt(id) {
   els.debtExtra.value = debt.extra_payment || "";
   els.debtSubmitButton.textContent = "Update Debt";
   els.cancelDebtEditButton.classList.remove("hidden");
-  activateTab("debts");
+  openEditModal("Edit Debt", els.debtForm);
   window.setTimeout(function () {
     els.debtName.focus();
   }, 50);
@@ -2004,6 +2079,7 @@ function clearDebtEditMode() {
   els.debtForm.reset();
   els.debtSubmitButton.textContent = "Add Debt";
   els.cancelDebtEditButton.classList.add("hidden");
+  closeEditModal(true);
 }
 
 function exportCsv() {
@@ -2155,7 +2231,21 @@ function bindEvents() {
   els.logoutSettingsButton.addEventListener("click", function () {
     signOut().catch(function (error) { showStatus(error.message, true); });
   });
+  els.closeEditModalButton.addEventListener("click", function () {
+    closeEditModal(false);
+  });
+  els.editModal.addEventListener("click", function (event) {
+    if (event.target === els.editModal) {
+      closeEditModal(false);
+    }
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && !els.editModal.classList.contains("hidden")) {
+      closeEditModal(false);
+    }
+  });
   els.resetButton.addEventListener("click", function () {
+    closeEditModal(false);
     state.db = null;
     state.remoteVersion = null;
     state.remoteExists = false;

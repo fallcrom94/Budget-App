@@ -95,6 +95,7 @@ const els = {
   accountForm: document.getElementById("accountForm"),
   accountName: document.getElementById("accountName"),
   accountType: document.getElementById("accountType"),
+  accountBalanceLabel: document.getElementById("accountBalanceLabel"),
   accountOpening: document.getElementById("accountOpening"),
   accountNetWorth: document.getElementById("accountNetWorth"),
   accountSubmitButton: document.getElementById("accountSubmitButton"),
@@ -879,6 +880,14 @@ function accountsWithBalances() {
   `);
 }
 
+function accountTransactionNet(accountId) {
+  return Number(scalar(
+    "SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0) net FROM transactions WHERE account_id = ?",
+    [Number(accountId)],
+    "net",
+  ));
+}
+
 function dashboardData() {
   const totals = one(
     "SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0) income, COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0) spending FROM transactions WHERE substr(date, 1, 7) = ?",
@@ -1354,7 +1363,7 @@ function renderAccounts() {
       els.accountsList,
       account.name,
       money(balance),
-      "Current balance - " + displayText(account.type) + " - Opening " + money(account.opening_balance),
+      displayText(account.type),
       balance < 0 ? "negative" : "positive",
       [
         { label: "Edit", action: "edit-account", id: account.id },
@@ -1922,21 +1931,29 @@ async function saveAccount(event) {
     showStatus("Account name is required.", true);
     return;
   }
+  if (state.editingAccountId) {
+    const targetBalance = numberValue(els.accountOpening);
+    const adjustedOpeningBalance = targetBalance - accountTransactionNet(state.editingAccountId);
+    run(
+      "UPDATE accounts SET name = ?, type = ?, opening_balance = ?, include_in_net_worth = ? WHERE id = ?",
+      [
+        name,
+        els.accountType.value.trim() || "Chequing",
+        adjustedOpeningBalance,
+        els.accountNetWorth.checked ? 1 : 0,
+        state.editingAccountId,
+      ],
+    );
+    clearAccountEditMode();
+    await saveAfterChange("Account updated.");
+    return;
+  }
   const values = [
     name,
     els.accountType.value.trim() || "Chequing",
     numberValue(els.accountOpening),
     els.accountNetWorth.checked ? 1 : 0,
   ];
-  if (state.editingAccountId) {
-    run(
-      "UPDATE accounts SET name = ?, type = ?, opening_balance = ?, include_in_net_worth = ? WHERE id = ?",
-      values.concat([state.editingAccountId]),
-    );
-    clearAccountEditMode();
-    await saveAfterChange("Account updated.");
-    return;
-  }
   run(
     "INSERT INTO accounts(name, type, opening_balance, include_in_net_worth) VALUES (?, ?, ?, ?)",
     values,
@@ -1947,14 +1964,22 @@ async function saveAccount(event) {
 }
 
 function editAccount(id) {
-  const account = one("SELECT * FROM accounts WHERE id = ?", [Number(id)]);
+  const account = one(`
+    SELECT a.*,
+      a.opening_balance + COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE -t.amount END), 0) AS current_balance
+    FROM accounts a
+    LEFT JOIN transactions t ON t.account_id = a.id
+    WHERE a.id = ?
+    GROUP BY a.id
+  `, [Number(id)]);
   if (!account) {
     return;
   }
   state.editingAccountId = Number(id);
   els.accountName.value = account.name || "";
   els.accountType.value = account.type || "";
-  els.accountOpening.value = account.opening_balance || "";
+  els.accountOpening.value = account.current_balance || "";
+  els.accountBalanceLabel.textContent = "Balance";
   els.accountNetWorth.checked = Number(account.include_in_net_worth || 0) === 1;
   els.accountSubmitButton.textContent = "Update Account";
   els.cancelAccountEditButton.classList.remove("hidden");
@@ -1967,6 +1992,7 @@ function editAccount(id) {
 function clearAccountEditMode() {
   state.editingAccountId = null;
   els.accountForm.reset();
+  els.accountBalanceLabel.textContent = "Opening Balance";
   els.accountNetWorth.checked = true;
   els.accountSubmitButton.textContent = "Add Account";
   els.cancelAccountEditButton.classList.add("hidden");

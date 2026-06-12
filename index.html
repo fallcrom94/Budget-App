@@ -146,7 +146,7 @@
           <form id="accountForm" class="form-grid">
             <label>Name<input id="accountName" required></label>
             <label>Type<input id="accountType" placeholder="Chequing, Savings, Credit Card"></label>
-            <label>Opening Balance<input id="accountOpening" inputmode="decimal" placeholder="0.00"></label>
+            <label><span id="accountBalanceLabel">Opening Balance</span><input id="accountOpening" inputmode="decimal" placeholder="0.00"></label>
             <label class="checkbox-row"><input id="accountNetWorth" type="checkbox" checked>Include In Net Worth</label>
             <button id="accountSubmitButton" class="primary" type="submit">Add Account</button>
             <button id="cancelAccountEditButton" class="secondary hidden" type="button">Cancel Edit</button>

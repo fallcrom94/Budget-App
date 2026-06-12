@@ -9,11 +9,17 @@ const state = {
   supabase: null,
   session: null,
   user: null,
+  remoteVersion: null,
+  remoteExists: false,
+  checkingRemote: false,
+  autoSyncTimer: null,
+  syncMessage: "",
   month: currentMonth(),
   editingTransactionId: null,
   editingAccountId: null,
   editingCategoryId: null,
   editingDebtId: null,
+  editingRecurringId: null,
   dirty: false,
   saving: false,
 };
@@ -65,6 +71,21 @@ const els = {
   transactionList: document.getElementById("transactionList"),
   exportCsvButton: document.getElementById("exportCsvButton"),
   importCsvInput: document.getElementById("importCsvInput"),
+  recurringForm: document.getElementById("recurringForm"),
+  recAmount: document.getElementById("recAmount"),
+  recType: document.getElementById("recType"),
+  recNextDate: document.getElementById("recNextDate"),
+  recFrequency: document.getElementById("recFrequency"),
+  recAccount: document.getElementById("recAccount"),
+  recCategory: document.getElementById("recCategory"),
+  recDebt: document.getElementById("recDebt"),
+  recVendor: document.getElementById("recVendor"),
+  recNotes: document.getElementById("recNotes"),
+  recActive: document.getElementById("recActive"),
+  recurringSubmitButton: document.getElementById("recurringSubmitButton"),
+  cancelRecurringEditButton: document.getElementById("cancelRecurringEditButton"),
+  runRecurringButton: document.getElementById("runRecurringButton"),
+  recurringList: document.getElementById("recurringList"),
   accountForm: document.getElementById("accountForm"),
   accountName: document.getElementById("accountName"),
   accountType: document.getElementById("accountType"),
@@ -208,6 +229,39 @@ function budgetStoragePath() {
   return "budgets/" + state.user.id + "/" + DB_FILENAME;
 }
 
+function budgetStorageFolder() {
+  if (!state.user || !state.user.id) {
+    throw new Error("Log in before opening or saving a budget.");
+  }
+  return "budgets/" + state.user.id;
+}
+
+function remoteVersion(info) {
+  if (!info) {
+    return "";
+  }
+  const metadata = info.metadata || {};
+  return [
+    info.updated_at || "",
+    info.created_at || "",
+    metadata.eTag || metadata.etag || "",
+    metadata.size || info.size || "",
+  ].join("|");
+}
+
+async function getRemoteBudgetInfo() {
+  const result = await state.supabase.storage.from(SUPABASE_BUCKET).list(budgetStorageFolder(), {
+    limit: 10,
+    search: DB_FILENAME,
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  return (result.data || []).find(function (file) {
+    return file.name === DB_FILENAME;
+  }) || null;
+}
+
 function updateAuthUi() {
   const signedIn = Boolean(state.user);
   const email = state.user && state.user.email ? state.user.email : "";
@@ -222,7 +276,7 @@ function updateAuthUi() {
   els.logoutButton.disabled = !signedIn;
   els.logoutSettingsButton.disabled = !signedIn;
   els.syncStatusValue.textContent = signedIn
-    ? "Sync Status: Signed in as " + email + (state.dirty ? " - unsaved changes" : " - saved")
+    ? "Sync Status: Signed in as " + email + (state.dirty ? " - unsaved changes" : " - saved") + (state.syncMessage ? " - " + state.syncMessage : "")
     : "Sync Status: Not signed in.";
 }
 
@@ -292,6 +346,10 @@ async function signOut() {
   state.session = null;
   state.user = null;
   state.db = null;
+  state.remoteVersion = null;
+  state.remoteExists = false;
+  state.syncMessage = "";
+  stopAutoSyncChecks();
   setReady(false);
   updateAuthUi();
   showStatus("Logged out.");
@@ -322,6 +380,15 @@ async function supabasePutBytes(bytes) {
     throw result.error;
   }
   return result.data;
+}
+
+async function hasRemoteChanged() {
+  const info = await getRemoteBudgetInfo();
+  const version = remoteVersion(info);
+  if (!state.remoteVersion) {
+    return Boolean(info);
+  }
+  return version !== state.remoteVersion;
 }
 
 async function loadSqlJsLibrary() {
@@ -430,6 +497,7 @@ function migrateDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
       category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+      debt_id INTEGER REFERENCES debts(id) ON DELETE SET NULL,
       type TEXT NOT NULL CHECK (type IN ('income','expense')),
       amount REAL NOT NULL CHECK (amount >= 0),
       vendor TEXT NOT NULL DEFAULT '',
@@ -477,6 +545,14 @@ function migrateDatabase() {
     WHERE external_id IS NOT NULL AND external_id <> ''
   `);
   state.db.run("CREATE INDEX IF NOT EXISTS idx_transactions_debt ON transactions(debt_id)");
+  const recurringColumns = all("PRAGMA table_info(recurring_transactions)").map(function (row) {
+    return row.name;
+  });
+  if (recurringColumns.indexOf("debt_id") === -1) {
+    state.db.run("ALTER TABLE recurring_transactions ADD COLUMN debt_id INTEGER REFERENCES debts(id) ON DELETE SET NULL");
+  }
+  state.db.run("CREATE INDEX IF NOT EXISTS idx_recurring_next_date ON recurring_transactions(next_date)");
+  state.db.run("CREATE INDEX IF NOT EXISTS idx_recurring_debt ON recurring_transactions(debt_id)");
   if (Number(scalar("SELECT COUNT(*) count FROM categories", [], "count")) === 0) {
     DEFAULT_CATEGORIES.forEach(function (category) {
       state.db.run(
@@ -604,16 +680,27 @@ async function openDatabase() {
   }
   showStatus("Opening budget from Supabase...");
   const SQL = await loadSqlJsLibrary();
-  const bytes = await supabaseGetBytes();
+  const remoteInfo = await getRemoteBudgetInfo();
+  const bytes = remoteInfo ? await supabaseGetBytes() : null;
+  state.remoteVersion = remoteVersion(remoteInfo);
+  state.remoteExists = Boolean(remoteInfo);
+  state.syncMessage = "";
   state.db = bytes ? new SQL.Database(bytes) : new SQL.Database();
   migrateDatabase();
   state.dirty = !bytes;
   syncDebtBudgetIfNeeded(state.month);
+  const recurringResult = processDueRecurringTransactions();
   renderAll();
   setReady(true);
   updateAuthUi();
+  startAutoSyncChecks();
   activateTab("add");
-  showStatus(bytes ? "Budget loaded. Ready to enter transactions." : "No saved budget found. A new one is ready to save.");
+  if (recurringResult.created > 0 || recurringResult.advanced > 0) {
+    await saveDatabase();
+    showStatus("Budget loaded. Added " + recurringResult.created + " recurring transaction(s).");
+  } else {
+    showStatus(bytes ? "Budget loaded. Ready to enter transactions." : "No saved budget found. A new one is ready to save.");
+  }
   clearStatusSoon();
 }
 
@@ -629,8 +716,17 @@ async function saveDatabase() {
   state.saving = true;
   showStatus("Saving budget to Supabase...");
   try {
+    if (await hasRemoteChanged()) {
+      state.syncMessage = "remote changes available";
+      updateAuthUi();
+      throw new Error("This budget changed on another device. Open Budget to reload before saving so you do not overwrite newer data.");
+    }
     const bytes = state.db.export();
     await supabasePutBytes(bytes);
+    const remoteInfo = await getRemoteBudgetInfo();
+    state.remoteVersion = remoteVersion(remoteInfo);
+    state.remoteExists = Boolean(remoteInfo);
+    state.syncMessage = "";
     state.dirty = false;
     updateAuthUi();
     showStatus("Budget saved to Supabase.");
@@ -649,6 +745,55 @@ async function saveAfterChange(message) {
   if (message) {
     showStatus(message);
     clearStatusSoon();
+  }
+}
+
+async function checkForRemoteUpdates(autoReload) {
+  if (!state.user || !state.db || state.saving || state.checkingRemote) {
+    return;
+  }
+  state.checkingRemote = true;
+  try {
+    const changed = await hasRemoteChanged();
+    if (!changed) {
+      state.syncMessage = "";
+      updateAuthUi();
+      return;
+    }
+    if (autoReload && !state.dirty) {
+      showStatus("Remote changes found. Refreshing budget...");
+      state.checkingRemote = false;
+      await openDatabase();
+      state.checkingRemote = true;
+      showStatus("Budget refreshed from Supabase.");
+      clearStatusSoon();
+      return;
+    }
+    state.syncMessage = "remote changes available";
+    updateAuthUi();
+    showStatus("This budget changed on another device. Open Budget to reload before making more changes.", true);
+  } finally {
+    state.checkingRemote = false;
+  }
+}
+
+function startAutoSyncChecks() {
+  if (state.autoSyncTimer) {
+    window.clearInterval(state.autoSyncTimer);
+  }
+  state.autoSyncTimer = window.setInterval(function () {
+    checkForRemoteUpdates(true).catch(function (error) {
+      state.syncMessage = "sync check failed";
+      updateAuthUi();
+      showStatus(error.message, true);
+    });
+  }, 30000);
+}
+
+function stopAutoSyncChecks() {
+  if (state.autoSyncTimer) {
+    window.clearInterval(state.autoSyncTimer);
+    state.autoSyncTimer = null;
   }
 }
 
@@ -722,6 +867,7 @@ function renderAll() {
   renderSelectors();
   renderDashboard();
   renderTransactions();
+  renderRecurring();
   renderAccounts();
   renderCategories();
   renderBudgets();
@@ -736,9 +882,13 @@ function renderSelectors() {
   const oldAccount = els.txAccount.value;
   const oldDebtAccount = els.debtAccount.value;
   const oldTransactionDebt = els.txDebt.value;
+  const oldRecurringAccount = els.recAccount.value;
+  const oldRecurringDebt = els.recDebt.value;
   clearNode(els.txAccount);
+  clearNode(els.recAccount);
   clearNode(els.debtAccount);
   clearNode(els.txDebt);
+  clearNode(els.recDebt);
   const noDebtAccount = document.createElement("option");
   noDebtAccount.value = "";
   noDebtAccount.textContent = "No Linked Account";
@@ -747,27 +897,42 @@ function renderSelectors() {
   noTransactionDebt.value = "";
   noTransactionDebt.textContent = "No Linked Debt";
   els.txDebt.appendChild(noTransactionDebt);
+  const noRecurringDebt = document.createElement("option");
+  noRecurringDebt.value = "";
+  noRecurringDebt.textContent = "No Linked Debt";
+  els.recDebt.appendChild(noRecurringDebt);
   accounts.forEach(function (account) {
     const label = account.name + " (" + displayText(account.type) + ")";
     const option = document.createElement("option");
     option.value = account.id;
     option.textContent = label;
     els.txAccount.appendChild(option);
+    const recurringOption = document.createElement("option");
+    recurringOption.value = account.id;
+    recurringOption.textContent = label;
+    els.recAccount.appendChild(recurringOption);
     const debtOption = document.createElement("option");
     debtOption.value = account.id;
     debtOption.textContent = label;
     els.debtAccount.appendChild(debtOption);
   });
   els.txAccount.value = oldAccount || (accounts[0] ? String(accounts[0].id) : "");
+  els.recAccount.value = oldRecurringAccount || (accounts[0] ? String(accounts[0].id) : "");
   els.debtAccount.value = oldDebtAccount || "";
   debts.forEach(function (debt) {
     const option = document.createElement("option");
     option.value = debt.id;
     option.textContent = debt.name + " (" + money(debt.balance) + ")";
     els.txDebt.appendChild(option);
+    const recurringDebtOption = document.createElement("option");
+    recurringDebtOption.value = debt.id;
+    recurringDebtOption.textContent = option.textContent;
+    els.recDebt.appendChild(recurringDebtOption);
   });
   els.txDebt.value = oldTransactionDebt || "";
+  els.recDebt.value = oldRecurringDebt || "";
   fillCategorySelect(els.txCategory, categories, els.txType.value, true);
+  fillCategorySelect(els.recCategory, categories, els.recType.value, true);
   fillCategorySelect(els.expectedIncomeCategory, categories, "income", false);
   fillCategorySelect(els.budgetCategory, categories, "expense", false);
   const vendors = all("SELECT vendor, COUNT(*) count FROM transactions WHERE TRIM(vendor) <> '' GROUP BY vendor ORDER BY count DESC, vendor LIMIT 100");
@@ -807,6 +972,107 @@ function chooseDebtCategory() {
   if (id) {
     els.txCategory.value = String(id);
   }
+}
+
+function chooseRecurringDebtCategory() {
+  const id = categoryId("Debt", "expense");
+  if (id) {
+    els.recCategory.value = String(id);
+  }
+}
+
+function parseDateParts(value) {
+  const parts = String(value || today()).split("-").map(Number);
+  return {
+    year: parts[0],
+    month: parts[1],
+    day: parts[2],
+  };
+}
+
+function daysInMonth(year, month) {
+  return new Date(year, month, 0).getDate();
+}
+
+function addDays(dateText, days) {
+  const date = new Date(dateText + "T00:00:00Z");
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function addMonths(dateText, months) {
+  const parts = parseDateParts(dateText);
+  const targetMonthIndex = parts.month - 1 + months;
+  const targetYear = parts.year + Math.floor(targetMonthIndex / 12);
+  const targetMonth = ((targetMonthIndex % 12) + 12) % 12 + 1;
+  const targetDay = Math.min(parts.day, daysInMonth(targetYear, targetMonth));
+  return [
+    String(targetYear).padStart(4, "0"),
+    String(targetMonth).padStart(2, "0"),
+    String(targetDay).padStart(2, "0"),
+  ].join("-");
+}
+
+function nextRecurringDate(dateText, frequency) {
+  if (frequency === "weekly") {
+    return addDays(dateText, 7);
+  }
+  if (frequency === "biweekly") {
+    return addDays(dateText, 14);
+  }
+  if (frequency === "yearly") {
+    return addMonths(dateText, 12);
+  }
+  return addMonths(dateText, 1);
+}
+
+function createTransactionFromRecurring(rule, dueDate) {
+  const externalId = "recurring-" + rule.id + "-" + dueDate;
+  const exists = one("SELECT id FROM transactions WHERE source = 'recurring' AND external_id = ?", [externalId]);
+  if (exists) {
+    return false;
+  }
+  run(
+    `INSERT INTO transactions(account_id, category_id, debt_id, date, type, amount, vendor, notes, recurring_transaction_id, source, external_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'recurring', ?)`,
+    [
+      Number(rule.account_id),
+      rule.category_id ? Number(rule.category_id) : (rule.debt_id ? debtCategoryId() : null),
+      rule.debt_id ? Number(rule.debt_id) : null,
+      dueDate,
+      rule.type,
+      Number(rule.amount || 0),
+      rule.vendor || "",
+      rule.notes || "",
+      Number(rule.id),
+      externalId,
+    ],
+  );
+  applyDebtImpact({ debt_id: rule.debt_id, type: rule.type, amount: rule.amount }, false);
+  return true;
+}
+
+function processDueRecurringTransactions() {
+  const dueThrough = today();
+  let created = 0;
+  let advanced = 0;
+  const rules = all("SELECT * FROM recurring_transactions WHERE active = 1 AND next_date <= ? ORDER BY next_date, id", [dueThrough]);
+  rules.forEach(function (rule) {
+    let nextDate = rule.next_date;
+    let guard = 0;
+    while (nextDate && nextDate <= dueThrough && guard < 120) {
+      if (createTransactionFromRecurring(rule, nextDate)) {
+        created += 1;
+      }
+      nextDate = nextRecurringDate(nextDate, rule.frequency);
+      guard += 1;
+    }
+    if (nextDate !== rule.next_date) {
+      run("UPDATE recurring_transactions SET next_date = ? WHERE id = ?", [nextDate, Number(rule.id)]);
+      advanced += 1;
+    }
+  });
+  return { created: created, advanced: advanced };
 }
 
 function addRow(container, title, amount, detail, amountClass, actions) {
@@ -916,6 +1182,44 @@ function renderTransactions() {
       { label: "Edit", action: "edit-transaction", id: tx.id },
       { label: "Delete", action: "delete-transaction", id: tx.id, danger: true },
     ]);
+  });
+}
+
+function renderRecurring() {
+  clearNode(els.recurringList);
+  const rows = all(`
+    SELECT r.*, a.name account, COALESCE(c.name, '') category, COALESCE(d.name, '') debt
+    FROM recurring_transactions r
+    JOIN accounts a ON a.id = r.account_id
+    LEFT JOIN categories c ON c.id = r.category_id
+    LEFT JOIN debts d ON d.id = r.debt_id
+    ORDER BY r.active DESC, r.next_date, r.vendor
+  `);
+  if (!rows.length) {
+    els.recurringList.textContent = "No recurring transactions yet.";
+  }
+  rows.forEach(function (rule) {
+    const title = rule.vendor || rule.notes || rule.category || "Recurring transaction";
+    const detail = [
+      rule.active ? "Active" : "Paused",
+      "Next " + rule.next_date,
+      displayText(rule.frequency),
+      rule.account,
+      rule.category,
+      rule.debt ? "Debt: " + rule.debt : "",
+      displayText(rule.type),
+    ].filter(Boolean).join(" - ");
+    addRow(
+      els.recurringList,
+      title,
+      money(rule.amount),
+      detail,
+      rule.type === "income" ? "positive" : "negative",
+      [
+        { label: "Edit", action: "edit-recurring", id: rule.id },
+        { label: "Delete", action: "delete-recurring", id: rule.id, danger: true },
+      ],
+    );
   });
 }
 
@@ -1342,6 +1646,107 @@ async function deleteTransaction(id) {
   await saveAfterChange("Transaction deleted.");
 }
 
+async function saveRecurring(event) {
+  event.preventDefault();
+  const accountId = Number(els.recAccount.value || 0);
+  const debtId = els.recDebt.value ? Number(els.recDebt.value) : null;
+  const categoryId = els.recCategory.value ? Number(els.recCategory.value) : (debtId ? debtCategoryId() : null);
+  const amount = Math.abs(numberValue(els.recAmount));
+  if (!accountId || amount <= 0) {
+    showStatus("Choose an account and enter an amount.", true);
+    return;
+  }
+  if (debtId && els.recType.value !== "expense") {
+    showStatus("Linked debt recurring transactions must be expenses.", true);
+    return;
+  }
+  const values = [
+    accountId,
+    categoryId,
+    debtId,
+    els.recType.value,
+    amount,
+    els.recVendor.value.trim(),
+    els.recNotes.value.trim(),
+    els.recFrequency.value,
+    els.recNextDate.value || today(),
+    els.recActive.checked ? 1 : 0,
+  ];
+  if (state.editingRecurringId) {
+    run(
+      `UPDATE recurring_transactions
+       SET account_id = ?, category_id = ?, debt_id = ?, type = ?, amount = ?, vendor = ?, notes = ?, frequency = ?, next_date = ?, active = ?
+       WHERE id = ?`,
+      values.concat([state.editingRecurringId]),
+    );
+    clearRecurringEditMode();
+    await saveAfterChange("Recurring transaction updated.");
+    return;
+  }
+  run(
+    `INSERT INTO recurring_transactions(account_id, category_id, debt_id, type, amount, vendor, notes, frequency, next_date, active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    values,
+  );
+  els.recurringForm.reset();
+  els.recFrequency.value = "monthly";
+  els.recNextDate.value = today();
+  els.recActive.checked = true;
+  await saveAfterChange("Recurring transaction added.");
+}
+
+function editRecurring(id) {
+  const rule = one("SELECT * FROM recurring_transactions WHERE id = ?", [Number(id)]);
+  if (!rule) {
+    return;
+  }
+  state.editingRecurringId = Number(id);
+  els.recAmount.value = rule.amount || "";
+  els.recType.value = rule.type || "expense";
+  renderSelectors();
+  els.recAccount.value = rule.account_id;
+  els.recCategory.value = rule.category_id || "";
+  els.recDebt.value = rule.debt_id || "";
+  els.recFrequency.value = rule.frequency || "monthly";
+  els.recNextDate.value = rule.next_date || today();
+  els.recVendor.value = rule.vendor || "";
+  els.recNotes.value = rule.notes || "";
+  els.recActive.checked = Number(rule.active || 0) === 1;
+  els.recurringSubmitButton.textContent = "Update Recurring";
+  els.cancelRecurringEditButton.classList.remove("hidden");
+  activateTab("recurring");
+  window.setTimeout(function () {
+    els.recAmount.focus();
+  }, 50);
+}
+
+function clearRecurringEditMode() {
+  state.editingRecurringId = null;
+  els.recurringForm.reset();
+  els.recFrequency.value = "monthly";
+  els.recNextDate.value = today();
+  els.recActive.checked = true;
+  els.recurringSubmitButton.textContent = "Add Recurring";
+  els.cancelRecurringEditButton.classList.add("hidden");
+}
+
+async function deleteRecurring(id) {
+  if (state.editingRecurringId === Number(id)) {
+    clearRecurringEditMode();
+  }
+  run("DELETE FROM recurring_transactions WHERE id = ?", [Number(id)]);
+  await saveAfterChange("Recurring transaction deleted.");
+}
+
+async function runDueRecurringNow() {
+  const result = processDueRecurringTransactions();
+  await saveAfterChange(
+    result.created > 0
+      ? "Added " + result.created + " recurring transaction(s)."
+      : (result.advanced > 0 ? "Recurring schedules are up to date." : "No recurring transactions are due."),
+  );
+}
+
 async function deleteDebt(id) {
   if (state.editingDebtId === Number(id)) {
     clearDebtEditMode();
@@ -1752,9 +2157,21 @@ function bindEvents() {
   });
   els.resetButton.addEventListener("click", function () {
     state.db = null;
+    state.remoteVersion = null;
+    state.remoteExists = false;
+    state.syncMessage = "";
+    stopAutoSyncChecks();
     setReady(false);
     updateAuthUi();
     showStatus("Local app state cleared. Your Supabase budget file was not deleted.");
+  });
+  window.addEventListener("focus", function () {
+    checkForRemoteUpdates(true).catch(function (error) { showStatus(error.message, true); });
+  });
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) {
+      checkForRemoteUpdates(true).catch(function (error) { showStatus(error.message, true); });
+    }
   });
   els.monthInput.addEventListener("change", function () {
     setBudgetMonth(els.monthInput.value).catch(function (error) { showStatus(error.message, true); });
@@ -1775,9 +2192,29 @@ function bindEvents() {
       chooseDebtCategory();
     }
   });
+  els.recType.addEventListener("change", function () {
+    if (els.recType.value !== "expense") {
+      els.recDebt.value = "";
+    }
+    renderSelectors();
+  });
+  els.recDebt.addEventListener("change", function () {
+    if (els.recDebt.value) {
+      els.recType.value = "expense";
+      renderSelectors();
+      chooseRecurringDebtCategory();
+    }
+  });
   els.transactionSearch.addEventListener("input", renderTransactions);
   els.transactionForm.addEventListener("submit", function (event) {
     saveTransaction(event).catch(function (error) { showStatus(error.message, true); });
+  });
+  els.recurringForm.addEventListener("submit", function (event) {
+    saveRecurring(event).catch(function (error) { showStatus(error.message, true); });
+  });
+  els.cancelRecurringEditButton.addEventListener("click", clearRecurringEditMode);
+  els.runRecurringButton.addEventListener("click", function () {
+    runDueRecurringNow().catch(function (error) { showStatus(error.message, true); });
   });
   els.accountForm.addEventListener("submit", function (event) {
     saveAccount(event).catch(function (error) { showStatus(error.message, true); });
@@ -1818,6 +2255,10 @@ function bindEvents() {
       editTransaction(id);
     } else if (action === "delete-transaction" && confirm("Delete this transaction?")) {
       deleteTransaction(id).catch(function (error) { showStatus(error.message, true); });
+    } else if (action === "edit-recurring") {
+      editRecurring(id);
+    } else if (action === "delete-recurring" && confirm("Delete this recurring transaction? Existing transactions will stay.")) {
+      deleteRecurring(id).catch(function (error) { showStatus(error.message, true); });
     } else if (action === "edit-account") {
       editAccount(id);
     } else if (action === "delete-account" && confirm("Delete this account and its transactions?")) {
@@ -1843,6 +2284,7 @@ async function init() {
   createSupabaseClient();
   bindEvents();
   els.txDate.value = today();
+  els.recNextDate.value = today();
   els.monthInput.value = state.month;
   els.reportMonthInput.value = state.month;
   els.budgetMonth.value = state.month;
@@ -1853,6 +2295,10 @@ async function init() {
     state.user = session ? session.user : null;
     if (!state.user) {
       state.db = null;
+      state.remoteVersion = null;
+      state.remoteExists = false;
+      state.syncMessage = "";
+      stopAutoSyncChecks();
       setReady(false);
     }
     updateAuthUi();

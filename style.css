@@ -234,6 +234,10 @@ h2 {
   align-self: end;
 }
 
+.form-grid .wide {
+  grid-column: 1 / -1;
+}
+
 .transaction-form {
   grid-template-columns: 1fr 1fr;
 }

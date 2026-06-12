@@ -93,6 +93,18 @@ The app saves with Storage `upsert`, so it needs `select`, `insert`, and `update
 
 Most changes save immediately after the action completes. Before a database is open, the signed-in panel has `Open Budget`. After the database is open, the Settings tab has manual `Save Budget` and `Log Out` controls.
 
+## Multi-Device Sync
+
+The app stores the whole SQLite database file in Supabase Storage, so two devices cannot safely merge simultaneous edits into one file. To make same-account use safer, the app tracks the remote Storage file version.
+
+- When a budget opens, the app records the current remote file version.
+- Before saving, the app checks whether another device has saved a newer file.
+- If the remote file changed, the app blocks the save instead of overwriting the newer file.
+- When this device has no unsaved local changes, it automatically refreshes from Supabase after remote changes are detected.
+- Sync checks run when the app regains focus and about every 30 seconds while a budget is open.
+
+For best results, avoid editing the same account on two devices at the exact same time. If the app says remote changes are available, use `Open Budget` to reload the newer file before continuing.
+
 ## Transactions
 
 Adding a transaction:
@@ -105,6 +117,20 @@ Adding a transaction:
 6. Tap `Save Transaction`.
 
 Linked debt expense transactions reduce the selected debt's tracked balance. Editing or deleting a linked transaction reverses the old balance impact before applying the new one.
+
+## Recurring Transactions
+
+Use the `Recurring` tab to schedule repeating income or expense transactions.
+
+1. Enter the amount, type, next date, and frequency.
+2. Choose the account and category.
+3. For recurring debt payments, choose the matching debt in `Linked Debt`.
+4. Leave `Active` checked unless the schedule should be paused.
+5. Tap `Add Recurring`.
+
+When a budget is opened, the app automatically creates any recurring transactions due on or before today, advances each schedule's next date, and saves the updated database. Use `Run Due Now` to manually check for due schedules. Frequencies are weekly, biweekly, monthly, and yearly.
+
+Generated recurring debt expense transactions reduce the linked debt balance just like manually entered linked debt payments.
 
 ## Budgeting
 
@@ -124,6 +150,7 @@ Budget rows show what has been spent so far, plus the planned and remaining amou
 - Dashboard totals
 - Account balances and net worth
 - Add/edit/delete transactions
+- Scheduled recurring transactions
 - Fast transaction entry
 - Vendor suggestions from previous transactions
 - Transaction search

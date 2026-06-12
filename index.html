@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Christendom Budgeting</title>
-    <link rel="stylesheet" href="style.css?v=20260611-13">
+    <link rel="stylesheet" href="style.css?v=20260611-14">
   </head>
   <body>
     <main class="app-shell">
@@ -45,6 +45,7 @@
         <button data-tab="add" class="active" type="button">Add</button>
         <button data-tab="dashboard" type="button">Dashboard</button>
         <button data-tab="transactions" type="button">Transactions</button>
+        <button data-tab="recurring" type="button">Recurring</button>
         <button data-tab="accounts" type="button">Accounts</button>
         <button data-tab="categories" type="button">Categories</button>
         <button data-tab="budgets" type="button">Budgets</button>
@@ -97,6 +98,30 @@
             <label class="file-button">Import CSV<input id="importCsvInput" type="file" accept=".csv,text/csv"></label>
           </div>
           <div id="transactionList" class="list"></div>
+        </section>
+      </section>
+
+      <section id="recurringTab" class="tab-page">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Recurring Transactions</h2>
+            <button id="runRecurringButton" class="secondary small" type="button">Run Due Now</button>
+          </div>
+          <form id="recurringForm" class="form-grid">
+            <label>Amount<input id="recAmount" inputmode="decimal" placeholder="0.00" required></label>
+            <label>Type<select id="recType"><option value="expense">Expense</option><option value="income">Income</option></select></label>
+            <label>Next Date<input id="recNextDate" type="date" required></label>
+            <label>Frequency<select id="recFrequency"><option value="weekly">Weekly</option><option value="biweekly">Biweekly</option><option value="monthly" selected>Monthly</option><option value="yearly">Yearly</option></select></label>
+            <label>Account<select id="recAccount" required></select></label>
+            <label>Category<select id="recCategory"></select></label>
+            <label>Linked Debt<select id="recDebt"></select></label>
+            <label>Vendor<input id="recVendor" autocomplete="off" placeholder="Vendor"></label>
+            <label class="wide">Notes<textarea id="recNotes" rows="2" placeholder="Notes"></textarea></label>
+            <label class="checkbox-row"><input id="recActive" type="checkbox" checked>Active</label>
+            <button id="recurringSubmitButton" class="primary" type="submit">Add Recurring</button>
+            <button id="cancelRecurringEditButton" class="secondary hidden" type="button">Cancel Edit</button>
+          </form>
+          <div id="recurringList" class="list"></div>
         </section>
       </section>
 
@@ -195,6 +220,6 @@
     </main>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
-    <script src="app.js?v=20260611-13"></script>
+    <script src="app.js?v=20260611-14"></script>
   </body>
 </html>

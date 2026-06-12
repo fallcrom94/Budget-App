@@ -286,6 +286,13 @@ h2 {
   grid-column: 1 / -1;
 }
 
+.form-grid label:has(input[type="date"]),
+.form-grid label:has(input[type="month"]),
+.transaction-form label:has(input[type="date"]),
+.transaction-form label:has(input[type="month"]) {
+  grid-column: 1 / -1;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -310,6 +317,7 @@ input,
 select,
 textarea {
   width: 100%;
+  min-width: 0;
   min-height: 46px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -317,6 +325,12 @@ textarea {
   color: var(--ink);
   padding: 10px 12px;
   outline: none;
+}
+
+input[type="date"],
+input[type="month"] {
+  min-width: 11.5rem;
+  font-size: 0.95rem;
 }
 
 .amount-field input {
@@ -487,5 +501,12 @@ textarea:focus {
   .transaction-form button,
   .transaction-form .wide {
     grid-column: 1 / -1;
+  }
+
+  .form-grid label:has(input[type="date"]),
+  .form-grid label:has(input[type="month"]),
+  .transaction-form label:has(input[type="date"]),
+  .transaction-form label:has(input[type="month"]) {
+    grid-column: auto;
   }
 }

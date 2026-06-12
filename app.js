@@ -67,6 +67,7 @@ const els = {
   txDebt: document.getElementById("txDebt"),
   txVendor: document.getElementById("txVendor"),
   txNotes: document.getElementById("txNotes"),
+  cancelTransactionEditButton: document.getElementById("cancelTransactionEditButton"),
   vendorList: document.getElementById("vendorList"),
   transactionSearch: document.getElementById("transactionSearch"),
   transactionList: document.getElementById("transactionList"),
@@ -1291,7 +1292,7 @@ function renderAccounts() {
       els.accountsList,
       account.name,
       money(balance),
-      displayText(account.type) + " - Opening " + money(account.opening_balance),
+      "Current balance - " + displayText(account.type) + " - Opening " + money(account.opening_balance),
       balance < 0 ? "negative" : "positive",
       [
         { label: "Edit", action: "edit-account", id: account.id },
@@ -1689,6 +1690,7 @@ function editTransaction(id) {
   els.txVendor.value = tx.vendor || "";
   els.txNotes.value = tx.notes || "";
   els.transactionSubmit.textContent = "Update Transaction";
+  els.cancelTransactionEditButton.classList.remove("hidden");
   openEditModal("Edit Transaction", els.transactionForm);
   window.setTimeout(function () {
     els.txAmount.focus();
@@ -1702,6 +1704,7 @@ function clearTransactionEditMode() {
   els.txType.value = "expense";
   renderSelectors();
   els.transactionSubmit.textContent = "Save Transaction";
+  els.cancelTransactionEditButton.classList.add("hidden");
   closeEditModal(true);
 }
 
@@ -2295,6 +2298,7 @@ function bindEvents() {
   els.transactionForm.addEventListener("submit", function (event) {
     saveTransaction(event).catch(function (error) { showStatus(error.message, true); });
   });
+  els.cancelTransactionEditButton.addEventListener("click", clearTransactionEditMode);
   els.recurringForm.addEventListener("submit", function (event) {
     saveRecurring(event).catch(function (error) { showStatus(error.message, true); });
   });

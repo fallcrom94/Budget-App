@@ -1206,7 +1206,7 @@ function renderSelectors() {
     debtOption.value = account.id;
     debtOption.textContent = label;
     els.debtAccount.appendChild(debtOption);
-    addOption(els.transactionAccountFilter, String(account.id), account.name);
+    addOption(els.transactionAccountFilter, String(account.id), label);
   });
   els.txAccount.value = oldAccount;
   els.txTransferTo.value = oldTransferTo || (accounts[1] ? String(accounts[1].id) : (accounts[0] ? String(accounts[0].id) : ""));

@@ -368,7 +368,7 @@ input[type="month"] {
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  font-size: 0.82rem;
+  font-size: inherit;
   line-height: 1.2;
   padding-left: 8px;
   padding-right: 4px;
@@ -477,6 +477,35 @@ textarea:focus {
 
 .tool-row {
   grid-template-columns: 1fr;
+}
+
+.filter-panel {
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfa;
+}
+
+.filter-panel summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  color: var(--ink);
+  line-height: 1.2;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.filter-panel .tool-row {
+  margin: 0;
+  padding: 0 12px 12px;
+}
+
+.import-row {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 .report-filter-row {

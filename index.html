@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Christendom Budgeting</title>
-    <link rel="stylesheet" href="style.css?v=20260613-5">
+    <link rel="stylesheet" href="style.css?v=20260613-8">
   </head>
   <body>
     <main class="app-shell">
@@ -26,13 +26,24 @@
           <label>Password<input id="passwordInput" type="password" autocomplete="current-password" required></label>
           <button id="loginButton" class="primary" type="submit">Login</button>
           <button id="signUpButton" class="secondary" type="button">Sign Up</button>
+          <button id="forgotPasswordButton" class="secondary" type="button">Forgot Password</button>
         </form>
+        <section id="resetPasswordPanel" class="auth-panel hidden">
+          <h3 class="inline-section-title">Reset Password</h3>
+          <p class="muted">Enter a new password for your account.</p>
+          <form id="resetPasswordForm" class="form-grid">
+            <label>New Password<input id="newPasswordInput" type="password" autocomplete="new-password" required></label>
+            <label>Confirm Password<input id="confirmPasswordInput" type="password" autocomplete="new-password" required></label>
+            <button class="primary" type="submit">Update Password</button>
+            <button id="cancelPasswordResetButton" class="secondary" type="button">Cancel</button>
+          </form>
+        </section>
         <div id="sessionPanel" class="session-panel hidden">
           <p id="sessionSummary" class="muted">Signed in.</p>
           <button id="openBudgetButton" class="primary" type="button">Open Budget</button>
           <button id="logoutButton" class="secondary" type="button">Log Out</button>
         </div>
-        <details class="tutorial" open>
+        <details class="tutorial">
           <summary>Getting Started</summary>
           <ol>
             <li>Enter your email and a password.</li>
@@ -251,10 +262,16 @@
           <h2>Settings</h2>
           <p id="syncStatusValue" class="muted">Sync Status: Not signed in.</p>
           <p class="muted">For support email joseph.spratt94@gmail.com.</p>
-          <h3 class="inline-section-title">Tab Order</h3>
-          <div id="tabOrderList" class="list"></div>
-          <button id="resetTabOrderButton" class="secondary" type="button">Reset Tab Order</button>
-          <details class="tutorial" open>
+          <div class="settings-actions">
+            <button id="saveDbButton" class="primary" type="button">Sync</button>
+            <button id="logoutSettingsButton" class="secondary" type="button">Log Out</button>
+          </div>
+          <details class="tutorial">
+            <summary>Tab Order</summary>
+            <div id="tabOrderList" class="list"></div>
+            <button id="resetTabOrderButton" class="secondary" type="button">Reset Tab Order</button>
+          </details>
+          <details class="tutorial">
             <summary>App Guide</summary>
             <ol>
               <li><strong>Add</strong>: enter income, expenses, transfers, and budget-only transactions. Choose <strong>No Account</strong> when a transaction should affect budgets and reports without changing an account balance.</li>
@@ -268,9 +285,12 @@
               <li><strong>Sync</strong>: saves your browser SQLite budget file to your private Supabase Storage file for the logged-in account.</li>
             </ol>
           </details>
-          <button id="saveDbButton" class="primary" type="button">Sync</button>
-          <button id="logoutSettingsButton" class="secondary" type="button">Log Out</button>
-          <button id="resetButton" class="secondary" type="button">Clear Local App State</button>
+          <details class="tutorial danger-zone">
+            <summary>Account Data</summary>
+            <p class="muted">Clear local app state removes only this browser's open budget. Delete account removes your synced budget file, deletes your login, and signs you out.</p>
+            <button id="resetButton" class="secondary" type="button">Clear Local App State</button>
+            <button id="deleteAccountDataButton" class="danger" type="button">Delete Account</button>
+          </details>
         </section>
       </section>
 
@@ -285,6 +305,6 @@
     </main>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
-    <script src="app.js?v=20260613-6"></script>
+    <script src="app.js?v=20260613-9"></script>
   </body>
 </html>

@@ -129,13 +129,41 @@ h2 {
   gap: 12px;
 }
 
+.auth-panel {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
 .tutorial summary {
   min-height: 44px;
   display: flex;
   align-items: center;
+  gap: 8px;
   color: var(--ink);
   font-weight: 850;
   cursor: pointer;
+}
+
+.tutorial summary::-webkit-details-marker {
+  display: none;
+}
+
+.tutorial summary::before {
+  content: "›";
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--accent-dark);
+  font-size: 1.15rem;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 0.15s ease;
+}
+
+.tutorial[open] summary::before {
+  transform: rotate(90deg);
 }
 
 .tutorial ol {
@@ -602,6 +630,20 @@ textarea:focus {
 .inline-section-title {
   margin: 10px 0 0;
   font-size: 0.98rem;
+}
+
+.settings-actions {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.danger-zone {
+  border-color: rgba(180, 35, 24, 0.24);
+}
+
+.danger-zone .danger {
+  margin-top: 10px;
 }
 
 .row {

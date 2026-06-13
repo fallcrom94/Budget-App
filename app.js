@@ -29,6 +29,7 @@ const state = {
   autoSyncTimer: null,
   syncMessage: "",
   editModal: null,
+  recoveringPassword: false,
   month: currentMonth(),
   editingTransactionId: null,
   editingTransferBaseId: null,
@@ -61,6 +62,12 @@ const els = {
   emailInput: document.getElementById("emailInput"),
   passwordInput: document.getElementById("passwordInput"),
   signUpButton: document.getElementById("signUpButton"),
+  forgotPasswordButton: document.getElementById("forgotPasswordButton"),
+  resetPasswordPanel: document.getElementById("resetPasswordPanel"),
+  resetPasswordForm: document.getElementById("resetPasswordForm"),
+  newPasswordInput: document.getElementById("newPasswordInput"),
+  confirmPasswordInput: document.getElementById("confirmPasswordInput"),
+  cancelPasswordResetButton: document.getElementById("cancelPasswordResetButton"),
   sessionPanel: document.getElementById("sessionPanel"),
   sessionSummary: document.getElementById("sessionSummary"),
   tabs: document.getElementById("tabs"),
@@ -179,6 +186,7 @@ const els = {
   tabOrderList: document.getElementById("tabOrderList"),
   resetTabOrderButton: document.getElementById("resetTabOrderButton"),
   resetButton: document.getElementById("resetButton"),
+  deleteAccountDataButton: document.getElementById("deleteAccountDataButton"),
   editModal: document.getElementById("editModal"),
   editModalTitle: document.getElementById("editModalTitle"),
   editModalBody: document.getElementById("editModalBody"),
@@ -459,18 +467,21 @@ async function getRemoteBudgetInfo() {
 function updateAuthUi() {
   const signedIn = Boolean(state.user);
   const email = state.user && state.user.email ? state.user.email : "";
-  els.setupView.style.display = signedIn && state.db ? "none" : "block";
-  els.tabs.classList.toggle("ready", signedIn && Boolean(state.db));
-  els.syncButton.style.display = signedIn && state.db ? "" : "none";
-  els.authForm.classList.toggle("hidden", signedIn);
-  els.sessionPanel.classList.toggle("hidden", !signedIn);
+  const recoveringPassword = Boolean(state.recoveringPassword);
+  els.setupView.style.display = signedIn && state.db && !recoveringPassword ? "none" : "block";
+  els.tabs.classList.toggle("ready", signedIn && Boolean(state.db) && !recoveringPassword);
+  els.syncButton.style.display = signedIn && state.db && !recoveringPassword ? "" : "none";
+  els.authForm.classList.toggle("hidden", signedIn || recoveringPassword);
+  els.resetPasswordPanel.classList.toggle("hidden", !recoveringPassword);
+  els.sessionPanel.classList.toggle("hidden", !signedIn || recoveringPassword);
   els.sessionSummary.textContent = signedIn ? "Signed in as " + email + "." : "";
   els.openBudgetButton.disabled = !signedIn;
-  els.saveDbButton.disabled = !signedIn || !state.db;
+  els.saveDbButton.disabled = !signedIn || !state.db || recoveringPassword;
   els.logoutButton.disabled = !signedIn;
   els.logoutSettingsButton.disabled = !signedIn;
+  els.deleteAccountDataButton.disabled = !signedIn;
   els.syncStatusValue.textContent = signedIn
-    ? "Sync Status: Signed in as " + email + (state.dirty ? " - unsaved changes" : " - saved") + (state.syncMessage ? " - " + state.syncMessage : "")
+    ? "Sync Status: Signed in as " + email + (recoveringPassword ? " - resetting password" : (state.dirty ? " - unsaved changes" : " - saved")) + (state.syncMessage ? " - " + state.syncMessage : "")
     : "Sync Status: Not signed in.";
 }
 
@@ -536,6 +547,54 @@ async function signUp() {
   clearStatusSoon();
 }
 
+async function sendPasswordReset() {
+  const email = els.emailInput.value.trim();
+  if (!email) {
+    showStatus("Enter your email first, then tap Forgot Password.", true);
+    return;
+  }
+  showStatus("Sending password reset email...");
+  const result = await state.supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: AUTH_REDIRECT_URL,
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  showStatus("If that email has an account, a password reset link has been sent.");
+  clearStatusSoon();
+}
+
+async function updatePassword(event) {
+  event.preventDefault();
+  const password = els.newPasswordInput.value;
+  const confirmPassword = els.confirmPasswordInput.value;
+  if (password.length < 6) {
+    showStatus("Use at least 6 characters for the new password.", true);
+    return;
+  }
+  if (password !== confirmPassword) {
+    showStatus("The passwords do not match.", true);
+    return;
+  }
+  showStatus("Updating password...");
+  const result = await state.supabase.auth.updateUser({ password: password });
+  if (result.error) {
+    throw result.error;
+  }
+  state.recoveringPassword = false;
+  els.resetPasswordForm.reset();
+  updateAuthUi();
+  await openDatabase();
+  showStatus("Password updated. Your budget is ready.");
+  clearStatusSoon();
+}
+
+async function cancelPasswordReset() {
+  state.recoveringPassword = false;
+  els.resetPasswordForm.reset();
+  await signOut();
+}
+
 async function signOut() {
   closeEditModal(false);
   if (state.supabase) {
@@ -550,11 +609,27 @@ async function signOut() {
   state.remoteVersion = null;
   state.remoteExists = false;
   state.syncMessage = "";
+  state.recoveringPassword = false;
   stopAutoSyncChecks();
   setReady(false);
   updateAuthUi();
   showStatus("Logged out.");
   clearStatusSoon();
+}
+
+function clearLocalSessionState() {
+  closeEditModal(false);
+  state.session = null;
+  state.user = null;
+  state.db = null;
+  state.remoteVersion = null;
+  state.remoteExists = false;
+  state.syncMessage = "";
+  state.recoveringPassword = false;
+  state.dirty = false;
+  stopAutoSyncChecks();
+  setReady(false);
+  updateAuthUi();
 }
 
 async function supabaseGetBytes() {
@@ -581,6 +656,42 @@ async function supabasePutBytes(bytes) {
     throw result.error;
   }
   return result.data;
+}
+
+async function deleteAccountData() {
+  if (!state.user) {
+    showStatus("Log in before deleting your account.", true);
+    return;
+  }
+  if (!confirm("Delete your account and synced budget file? This cannot be undone.")) {
+    return;
+  }
+  const typed = window.prompt("Type DELETE to confirm deleting your account.");
+  if (typed !== "DELETE") {
+    showStatus("Account deletion cancelled.");
+    clearStatusSoon();
+    return;
+  }
+  const sessionResult = await state.supabase.auth.getSession();
+  const token = sessionResult.data.session ? sessionResult.data.session.access_token : "";
+  if (!token) {
+    showStatus("Your session expired. Log in again before deleting your account.", true);
+    return;
+  }
+  showStatus("Deleting account...");
+  const result = await state.supabase.functions.invoke("delete-account", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + token,
+    },
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  await state.supabase.auth.signOut().catch(function () {});
+  clearLocalSessionState();
+  showStatus("Account deleted.");
+  clearStatusSoon();
 }
 
 async function hasRemoteChanged() {
@@ -2854,6 +2965,15 @@ function bindEvents() {
   els.signUpButton.addEventListener("click", function () {
     signUp().catch(function (error) { showStatus(error.message, true); });
   });
+  els.forgotPasswordButton.addEventListener("click", function () {
+    sendPasswordReset().catch(function (error) { showStatus(error.message, true); });
+  });
+  els.resetPasswordForm.addEventListener("submit", function (event) {
+    updatePassword(event).catch(function (error) { showStatus(error.message, true); });
+  });
+  els.cancelPasswordResetButton.addEventListener("click", function () {
+    cancelPasswordReset().catch(function (error) { showStatus(error.message, true); });
+  });
   els.tabs.addEventListener("click", function (event) {
     const button = event.target.closest("button[data-tab]");
     if (button) {
@@ -2896,6 +3016,9 @@ function bindEvents() {
     setReady(false);
     updateAuthUi();
     showStatus("Local app state cleared. Your Supabase budget file was not deleted.");
+  });
+  els.deleteAccountDataButton.addEventListener("click", function () {
+    deleteAccountData().catch(function (error) { showStatus(error.message, true); });
   });
   window.addEventListener("focus", function () {
     checkForRemoteUpdates(true)
@@ -3127,21 +3250,34 @@ async function init() {
   els.transactionMonthInput.value = state.month;
   els.budgetMonthInput.value = state.month;
   setReady(false);
-  await refreshSession();
   state.supabase.auth.onAuthStateChange(function (_event, session) {
     state.session = session;
     state.user = session ? session.user : null;
-    if (!state.user) {
+    if (_event === "PASSWORD_RECOVERY") {
+      state.recoveringPassword = true;
       state.db = null;
       state.remoteVersion = null;
       state.remoteExists = false;
       state.syncMessage = "";
       stopAutoSyncChecks();
       setReady(false);
+      updateAuthUi();
+      showStatus("Enter a new password to finish resetting your account.");
+      return;
+    }
+    if (!state.user) {
+      state.db = null;
+      state.remoteVersion = null;
+      state.remoteExists = false;
+      state.syncMessage = "";
+      state.recoveringPassword = false;
+      stopAutoSyncChecks();
+      setReady(false);
     }
     updateAuthUi();
   });
-  if (state.user) {
+  await refreshSession();
+  if (state.user && !state.recoveringPassword) {
     try {
       await openDatabase();
     } catch (error) {

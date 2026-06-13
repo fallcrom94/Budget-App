@@ -490,11 +490,33 @@ textarea:focus {
   min-height: 44px;
   display: flex;
   align-items: center;
+  gap: 8px;
   padding: 0 12px;
   color: var(--ink);
   line-height: 1.2;
   font-weight: 850;
   cursor: pointer;
+}
+
+.filter-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.filter-panel summary::before {
+  content: "›";
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--accent-dark);
+  font-size: 1.15rem;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 0.15s ease;
+}
+
+.filter-panel[open] summary::before {
+  transform: rotate(90deg);
 }
 
 .filter-panel .tool-row {

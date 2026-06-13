@@ -92,8 +92,15 @@ const els = {
   txVendorSuggestions: document.getElementById("txVendorSuggestions"),
   txNotes: document.getElementById("txNotes"),
   cancelTransactionEditButton: document.getElementById("cancelTransactionEditButton"),
+  deleteTransactionEditButton: document.getElementById("deleteTransactionEditButton"),
   vendorList: document.getElementById("vendorList"),
   transactionSearch: document.getElementById("transactionSearch"),
+  transactionTypeFilter: document.getElementById("transactionTypeFilter"),
+  transactionAccountFilter: document.getElementById("transactionAccountFilter"),
+  transactionCategoryFilter: document.getElementById("transactionCategoryFilter"),
+  transactionDebtFilter: document.getElementById("transactionDebtFilter"),
+  transactionMinFilter: document.getElementById("transactionMinFilter"),
+  transactionMaxFilter: document.getElementById("transactionMaxFilter"),
   transactionList: document.getElementById("transactionList"),
   exportCsvButton: document.getElementById("exportCsvButton"),
   importCsvInput: document.getElementById("importCsvInput"),
@@ -111,6 +118,7 @@ const els = {
   recActive: document.getElementById("recActive"),
   recurringSubmitButton: document.getElementById("recurringSubmitButton"),
   cancelRecurringEditButton: document.getElementById("cancelRecurringEditButton"),
+  deleteRecurringEditButton: document.getElementById("deleteRecurringEditButton"),
   runRecurringButton: document.getElementById("runRecurringButton"),
   recurringList: document.getElementById("recurringList"),
   accountForm: document.getElementById("accountForm"),
@@ -121,6 +129,7 @@ const els = {
   accountNetWorth: document.getElementById("accountNetWorth"),
   accountSubmitButton: document.getElementById("accountSubmitButton"),
   cancelAccountEditButton: document.getElementById("cancelAccountEditButton"),
+  deleteAccountEditButton: document.getElementById("deleteAccountEditButton"),
   accountsList: document.getElementById("accountsList"),
   categoryForm: document.getElementById("categoryForm"),
   categoryName: document.getElementById("categoryName"),
@@ -128,6 +137,7 @@ const els = {
   categoryLimit: document.getElementById("categoryLimit"),
   categorySubmitButton: document.getElementById("categorySubmitButton"),
   cancelCategoryEditButton: document.getElementById("cancelCategoryEditButton"),
+  deleteCategoryEditButton: document.getElementById("deleteCategoryEditButton"),
   categoriesList: document.getElementById("categoriesList"),
   budgetMonthInput: document.getElementById("budgetMonthInput"),
   budgetForm: document.getElementById("budgetForm"),
@@ -140,6 +150,7 @@ const els = {
   budgetCarry: document.getElementById("budgetCarry"),
   budgetSubmitButton: document.getElementById("budgetSubmitButton"),
   cancelBudgetEditButton: document.getElementById("cancelBudgetEditButton"),
+  deleteBudgetEditButton: document.getElementById("deleteBudgetEditButton"),
   resetBudgetDefaultsButton: document.getElementById("resetBudgetDefaultsButton"),
   budgetExpectedValue: document.getElementById("budgetExpectedValue"),
   budgetAllocatedValue: document.getElementById("budgetAllocatedValue"),
@@ -155,9 +166,12 @@ const els = {
   debtExtra: document.getElementById("debtExtra"),
   debtSubmitButton: document.getElementById("debtSubmitButton"),
   cancelDebtEditButton: document.getElementById("cancelDebtEditButton"),
+  deleteDebtEditButton: document.getElementById("deleteDebtEditButton"),
   debtsList: document.getElementById("debtsList"),
   reportsList: document.getElementById("reportsList"),
   reportMonthInput: document.getElementById("reportMonthInput"),
+  reportViewFilter: document.getElementById("reportViewFilter"),
+  reportRangeFilter: document.getElementById("reportRangeFilter"),
   openBudgetButton: document.getElementById("openBudgetButton"),
   saveDbButton: document.getElementById("saveDbButton"),
   logoutButton: document.getElementById("logoutButton"),
@@ -215,6 +229,13 @@ function clearNode(node) {
   while (node.firstChild) {
     node.removeChild(node.firstChild);
   }
+}
+
+function addOption(select, value, label) {
+  const option = document.createElement("option");
+  option.value = value;
+  option.textContent = label;
+  select.appendChild(option);
 }
 
 function setReady(ready) {
@@ -1130,6 +1151,9 @@ function renderSelectors() {
   const oldTransferTo = els.txTransferTo.value;
   const oldDebtAccount = els.debtAccount.value;
   const oldTransactionDebt = els.txDebt.value;
+  const oldFilterAccount = els.transactionAccountFilter.value;
+  const oldFilterCategory = els.transactionCategoryFilter.value;
+  const oldFilterDebt = els.transactionDebtFilter.value;
   const oldRecurringAccount = els.recAccount.value;
   const oldRecurringDebt = els.recDebt.value;
   const oldBudgetCategory = els.budgetCategory.value;
@@ -1139,6 +1163,15 @@ function renderSelectors() {
   clearNode(els.debtAccount);
   clearNode(els.txDebt);
   clearNode(els.recDebt);
+  clearNode(els.transactionAccountFilter);
+  clearNode(els.transactionCategoryFilter);
+  clearNode(els.transactionDebtFilter);
+  addOption(els.transactionAccountFilter, "all", "All Accounts");
+  addOption(els.transactionAccountFilter, "none", "No Account");
+  addOption(els.transactionCategoryFilter, "all", "All Categories");
+  addOption(els.transactionCategoryFilter, "none", "No Category");
+  addOption(els.transactionDebtFilter, "all", "All Debts");
+  addOption(els.transactionDebtFilter, "none", "No Debt");
   const noDebtAccount = document.createElement("option");
   noDebtAccount.value = "";
   noDebtAccount.textContent = "No Linked Account";
@@ -1173,6 +1206,7 @@ function renderSelectors() {
     debtOption.value = account.id;
     debtOption.textContent = label;
     els.debtAccount.appendChild(debtOption);
+    addOption(els.transactionAccountFilter, String(account.id), account.name);
   });
   els.txAccount.value = oldAccount;
   els.txTransferTo.value = oldTransferTo || (accounts[1] ? String(accounts[1].id) : (accounts[0] ? String(accounts[0].id) : ""));
@@ -1187,12 +1221,19 @@ function renderSelectors() {
     recurringDebtOption.value = debt.id;
     recurringDebtOption.textContent = option.textContent;
     els.recDebt.appendChild(recurringDebtOption);
+    addOption(els.transactionDebtFilter, String(debt.id), debt.name);
   });
   els.txDebt.value = oldTransactionDebt || "";
   els.recDebt.value = oldRecurringDebt || "";
   fillCategorySelect(els.txCategory, categories, els.txType.value, true);
   fillCategorySelect(els.recCategory, categories, els.recType.value, true);
   fillCategorySelect(els.budgetCategory, categories, els.budgetKind.value || "expense", false);
+  categories.forEach(function (category) {
+    addOption(els.transactionCategoryFilter, String(category.id), category.name + " (" + displayText(category.kind) + ")");
+  });
+  els.transactionAccountFilter.value = oldFilterAccount || "all";
+  els.transactionCategoryFilter.value = oldFilterCategory || "all";
+  els.transactionDebtFilter.value = oldFilterDebt || "all";
   els.budgetCategory.value = oldBudgetCategory || "";
   const vendors = vendorOptions();
   clearNode(els.vendorList);
@@ -1443,9 +1484,17 @@ async function ensureRecurringTransactionsCurrent(silent) {
   return result;
 }
 
-function addRow(container, title, amount, detail, amountClass, actions) {
+function addRow(container, title, amount, detail, amountClass, actions, rowAction) {
   const item = document.createElement("div");
   item.className = "row";
+  if (rowAction) {
+    item.classList.add("clickable-row");
+    item.tabIndex = 0;
+    item.dataset.action = rowAction.action;
+    item.dataset.id = rowAction.id;
+    item.setAttribute("role", "button");
+    item.setAttribute("aria-label", rowAction.label || "Open");
+  }
   const top = document.createElement("div");
   top.className = "row-top";
   const left = document.createElement("span");
@@ -1535,7 +1584,13 @@ function renderDashboard() {
 
 function renderTransactions() {
   clearNode(els.transactionList);
-  const search = "%" + String(els.transactionSearch.value || "").toLowerCase() + "%";
+  const search = String(els.transactionSearch.value || "").trim().toLowerCase();
+  const typeFilter = els.transactionTypeFilter.value || "all";
+  const accountFilter = els.transactionAccountFilter.value || "all";
+  const categoryFilter = els.transactionCategoryFilter.value || "all";
+  const debtFilter = els.transactionDebtFilter.value || "all";
+  const minAmount = String(els.transactionMinFilter.value || "").trim() === "" ? null : numberValue(els.transactionMinFilter);
+  const maxAmount = String(els.transactionMaxFilter.value || "").trim() === "" ? null : numberValue(els.transactionMaxFilter);
   const rows = all(`
     SELECT t.*, COALESCE(a.name, 'No Account') account, COALESCE(c.name, '') category, COALESCE(d.name, '') debt
     FROM transactions t
@@ -1543,20 +1598,67 @@ function renderTransactions() {
     LEFT JOIN categories c ON c.id = t.category_id
     LEFT JOIN debts d ON d.id = t.debt_id
     WHERE substr(t.date, 1, 7) = ?
-      AND lower(t.vendor || ' ' || t.notes || ' ' || COALESCE(a.name, 'No Account') || ' ' || COALESCE(c.name, '') || ' ' || COALESCE(d.name, '')) LIKE ?
     ORDER BY t.date DESC, t.id DESC
-    LIMIT 250
-  `, [state.month, search]);
+  `, [state.month]).filter(function (tx) {
+    const text = [
+      tx.vendor,
+      tx.notes,
+      tx.account,
+      tx.category,
+      tx.debt,
+      displayText(tx.type),
+      tx.source === "transfer" ? "transfer" : "",
+    ].filter(Boolean).join(" ").toLowerCase();
+    if (search && text.indexOf(search) === -1) {
+      return false;
+    }
+    if (typeFilter === "transfer" && tx.source !== "transfer") {
+      return false;
+    }
+    if ((typeFilter === "income" || typeFilter === "expense") && (tx.source === "transfer" || tx.type !== typeFilter)) {
+      return false;
+    }
+    if (accountFilter === "none" && tx.account_id) {
+      return false;
+    }
+    if (accountFilter !== "all" && accountFilter !== "none" && Number(tx.account_id || 0) !== Number(accountFilter)) {
+      return false;
+    }
+    if (categoryFilter === "none" && tx.category_id) {
+      return false;
+    }
+    if (categoryFilter !== "all" && categoryFilter !== "none" && Number(tx.category_id || 0) !== Number(categoryFilter)) {
+      return false;
+    }
+    if (debtFilter === "none" && tx.debt_id) {
+      return false;
+    }
+    if (debtFilter !== "all" && debtFilter !== "none" && Number(tx.debt_id || 0) !== Number(debtFilter)) {
+      return false;
+    }
+    if (minAmount !== null && Number(tx.amount || 0) < minAmount) {
+      return false;
+    }
+    if (maxAmount !== null && Number(tx.amount || 0) > maxAmount) {
+      return false;
+    }
+    return true;
+  }).slice(0, 250);
   if (!rows.length) {
     els.transactionList.textContent = "No transactions found for " + state.month + ".";
   }
   rows.forEach(function (tx) {
     const title = tx.vendor || tx.notes || tx.category || "Transaction";
     const detail = [tx.date, tx.account, tx.category, tx.debt ? "Debt: " + tx.debt : "", displayText(tx.type), tx.notes].filter(Boolean).join(" - ");
-    addRow(els.transactionList, title, money(tx.amount), detail, tx.type === "income" ? "positive" : "negative", [
-      { label: "Edit", action: "edit-transaction", id: tx.id },
-      { label: "Delete", action: "delete-transaction", id: tx.id, danger: true },
-    ]);
+    addRow(
+      els.transactionList,
+      title,
+      money(tx.amount),
+      detail,
+      tx.type === "income" ? "positive" : "negative",
+      null,
+      { label: "Edit " + title, action: "edit-transaction", id: tx.id },
+    );
   });
 }
 
@@ -1590,10 +1692,8 @@ function renderRecurring() {
       money(rule.amount),
       detail,
       rule.type === "income" ? "positive" : "negative",
-      [
-        { label: "Edit", action: "edit-recurring", id: rule.id },
-        { label: "Delete", action: "delete-recurring", id: rule.id, danger: true },
-      ],
+      null,
+      { label: "Edit " + title, action: "edit-recurring", id: rule.id },
     );
   });
 }
@@ -1612,10 +1712,8 @@ function renderAccounts() {
       money(balance),
       displayText(account.type),
       accountTypeKey(account.type) === "credit card" || balance < 0 ? "negative" : "positive",
-      [
-        { label: "Edit", action: "edit-account", id: account.id },
-        { label: "Delete", action: "delete-account", id: account.id, danger: true },
-      ],
+      null,
+      { label: "Edit " + account.name, action: "edit-account", id: account.id },
     );
   });
 }
@@ -1630,10 +1728,8 @@ function renderCategories() {
       money(category.monthly_limit),
       displayText(category.kind) + " - Default budget",
       "",
-      [
-        { label: "Edit", action: "edit-category", id: category.id },
-        { label: "Delete", action: "delete-category", id: category.id, danger: true },
-      ],
+      null,
+      { label: "Edit " + category.name, action: "edit-category", id: category.id },
     );
   });
 }
@@ -1675,10 +1771,8 @@ function renderBudgets() {
       money(budget.planned),
       "Expected for " + state.month,
       "positive",
-      [
-        { label: "Edit", action: "edit-expected-income", id: budget.id },
-        { label: "Delete", action: "delete-budget", id: budget.id, danger: true },
-      ],
+      null,
+      { label: "Edit " + budget.category_name, action: "edit-expected-income", id: budget.id },
     );
   });
   if (allocationRows.length) {
@@ -1697,10 +1791,8 @@ function renderBudgets() {
       money(actual),
       "Planned " + money(planned) + " - Remaining " + money(remaining) + (budget.carry_forward ? " - Carry forward" : ""),
       actual > planned ? "negative" : "positive",
-      [
-        { label: "Edit", action: "edit-budget", id: budget.id },
-        { label: "Delete", action: "delete-budget", id: budget.id, danger: true },
-      ],
+      null,
+      { label: "Edit " + budget.category_name, action: "edit-budget", id: budget.id },
     );
   });
 }
@@ -1743,23 +1835,36 @@ function renderDebts() {
       money(debt.balance),
       [debt.account, Number(debt.interest_rate || 0) + "%", "Payment " + money(payment), payoffText].filter(Boolean).join(" - "),
       "negative",
-      [
-        { label: "Edit", action: "edit-debt", id: debt.id },
-        { label: "Delete", action: "delete-debt", id: debt.id, danger: true },
-      ],
+      null,
+      { label: "Edit " + debt.name, action: "edit-debt", id: debt.id },
     );
   });
 }
 
 function renderReports() {
   clearNode(els.reportsList);
-  renderReportSummary();
-  renderMonthlyTrendReport();
-  renderBudgetPerformanceReport();
-  renderCategoryReport();
-  renderIncomeReport();
-  renderAccountReport();
-  renderDebtReport();
+  const view = els.reportViewFilter.value || "all";
+  if (view === "all" || view === "summary") {
+    renderReportSummary();
+  }
+  if (view === "all" || view === "cash-flow") {
+    renderMonthlyTrendReport();
+  }
+  if (view === "all" || view === "budget") {
+    renderBudgetPerformanceReport();
+  }
+  if (view === "all" || view === "categories") {
+    renderCategoryReport();
+  }
+  if (view === "all" || view === "income") {
+    renderIncomeReport();
+  }
+  if (view === "all" || view === "accounts") {
+    renderAccountReport();
+  }
+  if (view === "all" || view === "debts") {
+    renderDebtReport();
+  }
 }
 
 function addReportSection(title) {
@@ -1786,15 +1891,34 @@ function renderReportSummary() {
   const savingsRate = summary.income ? (net / summary.income) * 100 : 0;
   const budgetRemaining = summary.planned - summary.spending;
   const list = addReportSection("This Month Summary");
-  addRow(list, "Actual income", money(summary.income), "Expected " + money(zeroSummary.expectedIncome), "positive");
-  addRow(list, "Allocated", money(zeroSummary.allocated), "Left to allocate " + money(zeroSummary.left), Math.abs(zeroSummary.left) < 0.005 ? "positive" : "negative");
-  addRow(list, "Spending", money(summary.spending), summary.planned ? "Budget " + money(summary.planned) : "No budget set", summary.spending > summary.planned ? "negative" : "positive");
-  addRow(list, "Net savings", money(net), "Savings rate " + pct(savingsRate), net < 0 ? "negative" : "positive");
-  addRow(list, "Budget remaining", money(budgetRemaining), budgetRemaining < 0 ? "Over budget" : "Under budget", budgetRemaining < 0 ? "negative" : "positive");
-  addRow(list, "Net worth", money(summary.netWorth), "Accounts minus tracked debts", summary.netWorth < 0 ? "negative" : "positive");
+  list.classList.add("report-summary-grid");
+  addReportMetric(list, "Actual Income", money(summary.income), "Expected " + money(zeroSummary.expectedIncome), "positive");
+  addReportMetric(list, "Allocated", money(zeroSummary.allocated), "Left to allocate " + money(zeroSummary.left), Math.abs(zeroSummary.left) < 0.005 ? "positive" : "negative");
+  addReportMetric(list, "Spending", money(summary.spending), summary.planned ? "Budget " + money(summary.planned) : "No budget set", summary.spending > summary.planned ? "negative" : "positive");
+  addReportMetric(list, "Net Savings", money(net), "Savings rate " + pct(savingsRate), net < 0 ? "negative" : "positive");
+  addReportMetric(list, "Budget Remaining", money(budgetRemaining), budgetRemaining < 0 ? "Over budget" : "Under budget", budgetRemaining < 0 ? "negative" : "positive");
+  addReportMetric(list, "Net Worth", money(summary.netWorth), "Accounts minus tracked debts", summary.netWorth < 0 ? "negative" : "positive");
+}
+
+function addReportMetric(container, title, value, detail, valueClass) {
+  const item = document.createElement("article");
+  item.className = "report-metric";
+  const label = document.createElement("span");
+  label.textContent = title;
+  const amount = document.createElement("strong");
+  amount.className = valueClass || "";
+  amount.textContent = value;
+  const sub = document.createElement("p");
+  sub.textContent = detail || "";
+  item.appendChild(label);
+  item.appendChild(amount);
+  item.appendChild(sub);
+  container.appendChild(item);
 }
 
 function renderMonthlyTrendReport() {
+  const range = els.reportRangeFilter.value || "6";
+  const limitClause = range === "all" ? "" : "LIMIT " + Number(range || 6);
   const rows = all(`
     SELECT substr(date, 1, 7) month,
       COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0) income,
@@ -1803,7 +1927,7 @@ function renderMonthlyTrendReport() {
     WHERE COALESCE(source, '') <> 'transfer'
     GROUP BY month
     ORDER BY month DESC
-    LIMIT 24
+    ${limitClause}
   `);
   const list = addReportSection("Monthly Cash Flow");
   if (!rows.length) {
@@ -2101,6 +2225,7 @@ function editTransaction(id) {
   els.txNotes.value = tx.notes || "";
   updateTransactionTypeUi();
   els.cancelTransactionEditButton.classList.remove("hidden");
+  els.deleteTransactionEditButton.classList.remove("hidden");
   openEditModal("Edit Transaction", els.transactionForm);
   window.setTimeout(function () {
     els.txAmount.focus();
@@ -2126,6 +2251,7 @@ function editTransfer(tx) {
   els.txNotes.value = outTx.notes || inTx.notes || "";
   updateTransactionTypeUi();
   els.cancelTransactionEditButton.classList.remove("hidden");
+  els.deleteTransactionEditButton.classList.remove("hidden");
   openEditModal("Edit Transfer", els.transactionForm);
   window.setTimeout(function () {
     els.txAmount.focus();
@@ -2141,6 +2267,7 @@ function clearTransactionEditMode() {
   renderSelectors();
   updateTransactionTypeUi();
   els.cancelTransactionEditButton.classList.add("hidden");
+  els.deleteTransactionEditButton.classList.add("hidden");
   closeEditModal(true);
 }
 
@@ -2148,6 +2275,10 @@ async function deleteById(table, id, message) {
   if (table === "budgets") {
     if (state.editingBudgetId === Number(id)) {
       clearBudgetEditMode();
+    }
+  } else if (table === "categories") {
+    if (state.editingCategoryId === Number(id)) {
+      clearCategoryEditMode();
     }
   }
   run("DELETE FROM " + table + " WHERE id = ?", [Number(id)]);
@@ -2162,11 +2293,17 @@ async function deleteTransaction(id) {
       "DELETE FROM transactions WHERE source = 'transfer' AND (external_id = ? OR external_id = ?)",
       [baseId + "-out", baseId + "-in"],
     );
+    if (state.editingTransferBaseId === baseId) {
+      clearTransactionEditMode();
+    }
     await saveAfterChange("Transfer deleted.");
     return;
   }
   applyDebtImpact(tx, true);
   run("DELETE FROM transactions WHERE id = ?", [Number(id)]);
+  if (state.editingTransactionId === Number(id)) {
+    clearTransactionEditMode();
+  }
   await saveAfterChange("Transaction deleted.");
 }
 
@@ -2248,6 +2385,7 @@ function editRecurring(id) {
   els.recActive.checked = Number(rule.active || 0) === 1;
   els.recurringSubmitButton.textContent = "Update Recurring";
   els.cancelRecurringEditButton.classList.remove("hidden");
+  els.deleteRecurringEditButton.classList.remove("hidden");
   openEditModal("Edit Recurring Transaction", els.recurringForm);
   window.setTimeout(function () {
     els.recAmount.focus();
@@ -2262,6 +2400,7 @@ function clearRecurringEditMode() {
   els.recActive.checked = true;
   els.recurringSubmitButton.textContent = "Add Recurring";
   els.cancelRecurringEditButton.classList.add("hidden");
+  els.deleteRecurringEditButton.classList.add("hidden");
   closeEditModal(true);
 }
 
@@ -2368,6 +2507,7 @@ function editAccount(id) {
   els.accountNetWorth.checked = Number(account.include_in_net_worth || 0) === 1;
   els.accountSubmitButton.textContent = "Update Account";
   els.cancelAccountEditButton.classList.remove("hidden");
+  els.deleteAccountEditButton.classList.remove("hidden");
   openEditModal("Edit Account", els.accountForm);
   window.setTimeout(function () {
     els.accountName.focus();
@@ -2381,6 +2521,7 @@ function clearAccountEditMode() {
   els.accountNetWorth.checked = true;
   els.accountSubmitButton.textContent = "Add Account";
   els.cancelAccountEditButton.classList.add("hidden");
+  els.deleteAccountEditButton.classList.add("hidden");
   closeEditModal(true);
 }
 
@@ -2421,6 +2562,7 @@ function editCategory(id) {
   els.categoryLimit.value = category.monthly_limit || "";
   els.categorySubmitButton.textContent = "Update Category";
   els.cancelCategoryEditButton.classList.remove("hidden");
+  els.deleteCategoryEditButton.classList.remove("hidden");
   openEditModal("Edit Category", els.categoryForm);
   window.setTimeout(function () {
     els.categoryName.focus();
@@ -2433,6 +2575,7 @@ function clearCategoryEditMode() {
   els.categoryKind.value = "expense";
   els.categorySubmitButton.textContent = "Add Category";
   els.cancelCategoryEditButton.classList.add("hidden");
+  els.deleteCategoryEditButton.classList.add("hidden");
   closeEditModal(true);
 }
 
@@ -2511,6 +2654,7 @@ function editBudget(id) {
   els.budgetCarry.checked = Number(budget.carry_forward || 0) === 1;
   updateBudgetFormUi();
   els.cancelBudgetEditButton.classList.remove("hidden");
+  els.deleteBudgetEditButton.classList.remove("hidden");
   openEditModal(budget.kind === "income" ? "Edit Expected Income" : "Edit Allocation", els.budgetForm);
   window.setTimeout(function () {
     els.budgetPlanned.focus();
@@ -2525,6 +2669,7 @@ function clearBudgetEditMode() {
   renderSelectors();
   updateBudgetFormUi();
   els.cancelBudgetEditButton.classList.add("hidden");
+  els.deleteBudgetEditButton.classList.add("hidden");
   closeEditModal(true);
 }
 
@@ -2599,6 +2744,7 @@ function editDebt(id) {
   els.debtExtra.value = debt.extra_payment || "";
   els.debtSubmitButton.textContent = "Update Debt";
   els.cancelDebtEditButton.classList.remove("hidden");
+  els.deleteDebtEditButton.classList.remove("hidden");
   openEditModal("Edit Debt", els.debtForm);
   window.setTimeout(function () {
     els.debtName.focus();
@@ -2610,6 +2756,7 @@ function clearDebtEditMode() {
   els.debtForm.reset();
   els.debtSubmitButton.textContent = "Add Debt";
   els.cancelDebtEditButton.classList.add("hidden");
+  els.deleteDebtEditButton.classList.add("hidden");
   closeEditModal(true);
 }
 
@@ -2802,6 +2949,8 @@ function bindEvents() {
   els.reportMonthInput.addEventListener("change", function () {
     setBudgetMonth(els.reportMonthInput.value).catch(function (error) { showStatus(error.message, true); });
   });
+  els.reportViewFilter.addEventListener("change", renderReports);
+  els.reportRangeFilter.addEventListener("change", renderReports);
   els.transactionMonthInput.addEventListener("change", function () {
     setBudgetMonth(els.transactionMonthInput.value).catch(function (error) { showStatus(error.message, true); });
   });
@@ -2840,6 +2989,17 @@ function bindEvents() {
     updateBudgetFormUi();
   });
   els.transactionSearch.addEventListener("input", renderTransactions);
+  [
+    els.transactionTypeFilter,
+    els.transactionAccountFilter,
+    els.transactionCategoryFilter,
+    els.transactionDebtFilter,
+    els.transactionMinFilter,
+    els.transactionMaxFilter,
+  ].forEach(function (control) {
+    control.addEventListener("input", renderTransactions);
+    control.addEventListener("change", renderTransactions);
+  });
   els.txVendor.addEventListener("input", function () {
     renderVendorSuggestions(els.txVendor, els.txVendorSuggestions);
   });
@@ -2862,10 +3022,29 @@ function bindEvents() {
     saveTransaction(event).catch(function (error) { showStatus(error.message, true); });
   });
   els.cancelTransactionEditButton.addEventListener("click", clearTransactionEditMode);
+  els.deleteTransactionEditButton.addEventListener("click", function () {
+    const id = state.editingTransactionId;
+    const baseId = state.editingTransferBaseId;
+    if (!id && !baseId) {
+      return;
+    }
+    if (confirm(baseId ? "Delete this transfer?" : "Delete this transaction?")) {
+      const transferSide = baseId ? one("SELECT id FROM transactions WHERE source = 'transfer' AND external_id = ?", [baseId + "-out"]) : null;
+      const targetId = id || (transferSide ? transferSide.id : null);
+      if (targetId) {
+        deleteTransaction(targetId).catch(function (error) { showStatus(error.message, true); });
+      }
+    }
+  });
   els.recurringForm.addEventListener("submit", function (event) {
     saveRecurring(event).catch(function (error) { showStatus(error.message, true); });
   });
   els.cancelRecurringEditButton.addEventListener("click", clearRecurringEditMode);
+  els.deleteRecurringEditButton.addEventListener("click", function () {
+    if (state.editingRecurringId && confirm("Delete this recurring transaction? Existing transactions will stay.")) {
+      deleteRecurring(state.editingRecurringId).catch(function (error) { showStatus(error.message, true); });
+    }
+  });
   els.runRecurringButton.addEventListener("click", function () {
     runDueRecurringNow().catch(function (error) { showStatus(error.message, true); });
   });
@@ -2873,14 +3052,29 @@ function bindEvents() {
     saveAccount(event).catch(function (error) { showStatus(error.message, true); });
   });
   els.cancelAccountEditButton.addEventListener("click", clearAccountEditMode);
+  els.deleteAccountEditButton.addEventListener("click", function () {
+    if (state.editingAccountId && confirm("Delete this account and its transactions?")) {
+      deleteAccount(state.editingAccountId).catch(function (error) { showStatus(error.message, true); });
+    }
+  });
   els.categoryForm.addEventListener("submit", function (event) {
     saveCategory(event).catch(function (error) { showStatus(error.message, true); });
   });
   els.cancelCategoryEditButton.addEventListener("click", clearCategoryEditMode);
+  els.deleteCategoryEditButton.addEventListener("click", function () {
+    if (state.editingCategoryId && confirm("Delete this category? Existing transactions become uncategorized.")) {
+      deleteById("categories", state.editingCategoryId, "Category deleted.").catch(function (error) { showStatus(error.message, true); });
+    }
+  });
   els.budgetForm.addEventListener("submit", function (event) {
     saveBudget(event).catch(function (error) { showStatus(error.message, true); });
   });
   els.cancelBudgetEditButton.addEventListener("click", clearBudgetEditMode);
+  els.deleteBudgetEditButton.addEventListener("click", function () {
+    if (state.editingBudgetId && confirm("Delete this budget line?")) {
+      deleteById("budgets", state.editingBudgetId, "Budget deleted.").catch(function (error) { showStatus(error.message, true); });
+    }
+  });
   els.resetBudgetDefaultsButton.addEventListener("click", function () {
     resetBudgetFromDefaults().catch(function (error) { showStatus(error.message, true); });
   });
@@ -2888,6 +3082,11 @@ function bindEvents() {
     saveDebt(event).catch(function (error) { showStatus(error.message, true); });
   });
   els.cancelDebtEditButton.addEventListener("click", clearDebtEditMode);
+  els.deleteDebtEditButton.addEventListener("click", function () {
+    if (state.editingDebtId && confirm("Delete this debt?")) {
+      deleteDebt(state.editingDebtId).catch(function (error) { showStatus(error.message, true); });
+    }
+  });
   els.exportCsvButton.addEventListener("click", exportCsv);
   els.importCsvInput.addEventListener("change", function () {
     const file = els.importCsvInput.files[0];
@@ -2897,11 +3096,13 @@ function bindEvents() {
   });
   document.body.addEventListener("click", function (event) {
     const button = event.target.closest("button[data-action]");
-    if (!button) {
+    const row = event.target.closest(".clickable-row[data-action]");
+    const target = button || row;
+    if (!target) {
       return;
     }
-    const action = button.dataset.action;
-    const id = button.dataset.id;
+    const action = target.dataset.action;
+    const id = target.dataset.id;
     if (action === "edit-transaction") {
       editTransaction(id);
     } else if (action === "delete-transaction" && confirm("Delete this transaction?")) {
@@ -2935,6 +3136,16 @@ function bindEvents() {
       moveTab(id, -1);
     } else if (action === "move-tab-down") {
       moveTab(id, 1);
+    }
+  });
+  document.body.addEventListener("keydown", function (event) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    const row = event.target.closest(".clickable-row[data-action]");
+    if (row) {
+      event.preventDefault();
+      row.click();
     }
   });
 }

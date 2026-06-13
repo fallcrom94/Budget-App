@@ -463,6 +463,7 @@ textarea:focus {
 
 .month-row,
 .tool-row,
+.report-filter-row,
 .panel-head {
   display: grid;
   gap: 10px;
@@ -475,6 +476,10 @@ textarea:focus {
 }
 
 .tool-row {
+  grid-template-columns: 1fr;
+}
+
+.report-filter-row {
   grid-template-columns: 1fr;
 }
 
@@ -496,7 +501,7 @@ textarea:focus {
 
 .report-section {
   border-top: 1px solid var(--line);
-  padding-top: 12px;
+  padding-top: 16px;
 }
 
 .report-section:first-child {
@@ -505,8 +510,42 @@ textarea:focus {
 }
 
 .report-section h3 {
-  margin: 0 0 6px;
+  margin: 0 0 10px;
   font-size: 1rem;
+}
+
+.report-summary-grid {
+  grid-template-columns: 1fr;
+}
+
+.report-metric {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  min-height: 118px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfa;
+}
+
+.report-metric span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.report-metric strong {
+  font-size: clamp(1.05rem, 5vw, 1.55rem);
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.report-metric p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.35;
 }
 
 .inline-section-title {
@@ -519,6 +558,20 @@ textarea:focus {
   gap: 6px;
   padding: 12px 0;
   border-bottom: 1px solid var(--line);
+}
+
+.clickable-row {
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 12px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.clickable-row:hover,
+.clickable-row:focus {
+  background: #f7faf6;
+  outline: 2px solid rgba(31, 122, 79, 0.18);
+  outline-offset: 2px;
 }
 
 .row:last-child {
@@ -563,7 +616,16 @@ textarea:focus {
   .form-grid,
   .transaction-form,
   .tool-row,
+  .report-filter-row,
   .month-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .report-filter-row {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .report-summary-grid {
     grid-template-columns: 1fr 1fr;
   }
 

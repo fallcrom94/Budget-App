@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Christendom Budgeting</title>
-    <link rel="stylesheet" href="style.css?v=20260611-14">
+    <link rel="stylesheet" href="style.css?v=20260613-1">
   </head>
   <body>
     <main class="app-shell">
@@ -83,6 +83,7 @@
             <label class="wide">Notes<textarea id="txNotes" rows="2" placeholder="Notes"></textarea></label>
             <button class="primary" type="submit">Save Transaction</button>
             <button id="cancelTransactionEditButton" class="secondary hidden" type="button">Cancel Edit</button>
+            <button id="deleteTransactionEditButton" class="danger hidden" type="button">Delete Transaction</button>
           </form>
         </section>
       </section>
@@ -113,6 +114,17 @@
           <div class="tool-row">
             <input id="transactionMonthInput" type="month">
             <input id="transactionSearch" placeholder="Search vendor, notes, account, category, debt">
+            <select id="transactionTypeFilter">
+              <option value="all">All Types</option>
+              <option value="expense">Expenses</option>
+              <option value="income">Income</option>
+              <option value="transfer">Transfers</option>
+            </select>
+            <select id="transactionAccountFilter"></select>
+            <select id="transactionCategoryFilter"></select>
+            <select id="transactionDebtFilter"></select>
+            <input id="transactionMinFilter" inputmode="decimal" placeholder="Min amount">
+            <input id="transactionMaxFilter" inputmode="decimal" placeholder="Max amount">
             <label class="file-button">Import CSV<input id="importCsvInput" type="file" accept=".csv,text/csv"></label>
           </div>
           <div id="transactionList" class="list"></div>
@@ -138,6 +150,7 @@
             <label class="checkbox-row"><input id="recActive" type="checkbox" checked>Active</label>
             <button id="recurringSubmitButton" class="primary" type="submit">Add Recurring</button>
             <button id="cancelRecurringEditButton" class="secondary hidden" type="button">Cancel Edit</button>
+            <button id="deleteRecurringEditButton" class="danger hidden" type="button">Delete Recurring</button>
           </form>
           <div id="recurringList" class="list"></div>
         </section>
@@ -153,6 +166,7 @@
             <label class="checkbox-row"><input id="accountNetWorth" type="checkbox" checked>Include In Net Worth</label>
             <button id="accountSubmitButton" class="primary" type="submit">Add Account</button>
             <button id="cancelAccountEditButton" class="secondary hidden" type="button">Cancel Edit</button>
+            <button id="deleteAccountEditButton" class="danger hidden" type="button">Delete Account</button>
           </form>
           <div id="accountsList" class="list"></div>
         </section>
@@ -167,6 +181,7 @@
             <label>Default Budget<input id="categoryLimit" inputmode="decimal" placeholder="0.00"></label>
             <button id="categorySubmitButton" class="primary" type="submit">Add Category</button>
             <button id="cancelCategoryEditButton" class="secondary hidden" type="button">Cancel Edit</button>
+            <button id="deleteCategoryEditButton" class="danger hidden" type="button">Delete Category</button>
           </form>
           <div id="categoriesList" class="list"></div>
         </section>
@@ -191,6 +206,7 @@
             <label id="budgetCarryField" class="checkbox-row"><input id="budgetCarry" type="checkbox">Carry Forward</label>
             <button id="budgetSubmitButton" class="primary" type="submit">Save Budget Line</button>
             <button id="cancelBudgetEditButton" class="secondary hidden" type="button">Cancel Edit</button>
+            <button id="deleteBudgetEditButton" class="danger hidden" type="button">Delete Budget Line</button>
             <button id="resetBudgetDefaultsButton" class="secondary" type="button">Reset Month From Defaults</button>
           </form>
           <div id="budgetsList" class="list"></div>
@@ -209,6 +225,7 @@
             <label>Extra Payment<input id="debtExtra" inputmode="decimal" placeholder="0.00"></label>
             <button id="debtSubmitButton" class="primary" type="submit">Add Debt</button>
             <button id="cancelDebtEditButton" class="secondary hidden" type="button">Cancel Edit</button>
+            <button id="deleteDebtEditButton" class="danger hidden" type="button">Delete Debt</button>
           </form>
           <div id="debtsList" class="list"></div>
         </section>
@@ -217,8 +234,10 @@
       <section id="reportsTab" class="tab-page">
         <section class="panel">
           <h2>Reports</h2>
-          <div class="month-row">
+          <div class="report-filter-row">
             <label>Report Month<input id="reportMonthInput" type="month"></label>
+            <label>View<select id="reportViewFilter"><option value="all">All Reports</option><option value="summary">Summary</option><option value="cash-flow">Cash Flow</option><option value="budget">Budget</option><option value="categories">Categories</option><option value="income">Income</option><option value="accounts">Accounts</option><option value="debts">Debts</option></select></label>
+            <label>Trend Range<select id="reportRangeFilter"><option value="6">Last 6 Months</option><option value="12">Last 12 Months</option><option value="24">Last 24 Months</option><option value="all">All Months</option></select></label>
           </div>
           <div id="reportsList" class="list reports-list"></div>
         </section>
@@ -237,7 +256,7 @@
             <ol>
               <li><strong>Add</strong>: enter income, expenses, transfers, and budget-only transactions. Choose <strong>No Account</strong> when a transaction should affect budgets and reports without changing an account balance.</li>
               <li><strong>Dashboard</strong>: review monthly income, spending, budget remaining, net worth, account balances, and category spending.</li>
-              <li><strong>Transactions</strong>: filter by month, search activity, edit rows, delete rows, and import or export CSV files.</li>
+              <li><strong>Transactions</strong>: filter activity by month, type, account, category, debt, amount, or search text, and import or export CSV files.</li>
               <li><strong>Recurring</strong>: schedule repeating income or expenses. Due recurring items are created automatically when the budget opens, wakes, or sync checks run.</li>
               <li><strong>Accounts</strong>: track bank accounts, cash, savings, and credit cards. Credit card balances show red and payments reduce the amount owed.</li>
               <li><strong>Budgets</strong>: add expected income and expense allocations for the selected month. Reset from defaults copies category default amounts into the month.</li>
@@ -263,6 +282,6 @@
     </main>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
-    <script src="app.js?v=20260611-14"></script>
+    <script src="app.js?v=20260613-1"></script>
   </body>
 </html>
